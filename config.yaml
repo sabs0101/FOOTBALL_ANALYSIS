@@ -1,0 +1,42 @@
+# Football Analytics Configuration
+
+# General execution settings
+system:
+  device: "auto"              # Options: "auto", "cuda", "cpu", or GPU index like "0"
+  half_precision: true        # Use FP16 on CUDA for ~2x speedup on RTX 4050
+  seed: 42
+
+# Detection settings (Milestone 1)
+detection:
+  model_name: "yolov8m.pt"    # Options: "yolov8n.pt", "yolov8s.pt", "yolov8m.pt", "yolov8x.pt"
+  model_dir: "models"
+  conf_threshold: 0.35        # Minimum confidence threshold
+  iou_threshold: 0.50         # NMS IoU threshold
+  classes:
+    person: 0                 # COCO class 0: Players, Goalkeeper, Referees
+    sports_ball: 32           # COCO class 32: Football
+  filter_classes: [0, 32]     # Classes to retain during inference
+
+# Video Processing
+video:
+  target_fps: null            # null to preserve original video FPS, or specify e.g. 30
+  output_format: "mp4v"       # FourCC codec: "mp4v", "avc1"
+
+# Visualization settings
+visualization:
+  draw_boxes: true
+  draw_labels: true
+  draw_confidences: true
+  draw_hud: true              # Display FPS, frame counter, active player count HUD
+  box_thickness: 2
+  text_scale: 0.5
+  player_box_color: [0, 215, 255]     # Bright Gold/Amber in BGR (or RGB depending on annotator)
+  ball_box_color: [0, 0, 255]         # Red in BGR
+  hud_bg_color: [20, 24, 30]          # Dark sleek HUD slate
+
+# Paths
+paths:
+  input_dir: "data/videos"
+  test_dir: "data/test"
+  output_dir: "outputs/detections"
+  log_dir: "outputs/logs"

@@ -1,0 +1,20 @@
+# Core Deep Learning & Computer Vision
+torch>=2.4.0
+torchvision>=0.19.0
+ultralytics>=8.3.0
+opencv-python>=4.10.0
+supervision>=0.22.0
+
+# Scientific & Data Processing
+numpy>=1.26.0
+pandas>=2.2.0
+scipy>=1.13.0
+scikit-learn>=1.5.0
+
+# Configuration & Utilities
+pyyaml>=6.0.1
+tqdm>=4.66.0
+requests>=2.32.0
+
+# Testing & Quality
+pytest>=8.3.0
