@@ -12,11 +12,11 @@ An end-to-end computer vision and tactical analytics system for normal broadcast
 ## Roadmap & Milestones
 
 - [x] **Milestone 1**: Video $\rightarrow$ YOLO Player/Ball Detection $\rightarrow$ Annotated Output Video with Tactical HUD.
-- [ ] **Milestone 2**: Multi-Object Tracking (ByteTrack / BoT-SORT) with Persistent Player IDs.
+- [x] **Milestone 2**: Multi-Object Tracking (ByteTrack / BoT-SORT) with Persistent Player IDs.
 - [ ] **Milestone 3**: Pitch & Field Line Detection.
 - [ ] **Milestone 4**: Pitch Keypoints $\rightarrow$ Homography $\rightarrow$ Standardized 2D Pitch Model.
 - [ ] **Milestone 5**: Camera-to-Pitch Coordinate Transformation (2D Radar).
-- [ ] **Milestone 6**: Automated Team & Referee Classification via Jersey Color Clustering.
+- [x] **Milestone 6**: Automated Team & Referee Classification via Jersey Color Clustering.
 - [ ] **Milestone 7**: Tactical Analytics (Movement Trajectories, Speed, Distance, Heatmaps, Voronoi).
 - [ ] **Milestone 8**: Ball Tracking, Trajectory Smoothing, and Possession Assignment.
 - [ ] **Milestone 9**: Camera Movement & Zoom Compensation.
