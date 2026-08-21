@@ -1,5 +1,5 @@
 <div align="center">
-  <h1>⚽ Football Analysis & Tactical Reconstruction</h1>
+  <h1>Football Analysis & Tactical Reconstruction</h1>
   <p><strong>An End-to-End Computer Vision System for Broadcast Football Footage</strong></p>
 
   <!-- Badges -->
@@ -14,20 +14,20 @@
 
 ---
 
-## 📖 Overview
+## Overview
 
 **Football Analysis** is a comprehensive tactical analytics pipeline built to process raw, broadcast-angle football footage. Leveraging state-of-the-art deep learning (YOLO) and computer vision techniques, it extracts high-value data such as player coordinates, tracking IDs, and team classifications, rendering them onto a dynamic tactical HUD.
 
-### ✨ Core Features
+### Core Features
 
-- 🎯 **High-Fidelity Detection:** Detect players, referees, and the ball with sub-pixel accuracy.
-- 🔗 **Persistent Multi-Object Tracking:** Assign and maintain unique tracking IDs seamlessly across frames using `ByteTrack`.
-- 🎨 **Automated Team Classification:** Dynamically cluster jersey colors via K-Means to intelligently assign players to their respective teams (Team 1, Team 2) on-the-fly.
-- 📺 **Tactical HUD Visualization:** Real-time analytics overlay, displaying frame rates, live player counts, tracking IDs, and team-colored bounding boxes.
+- **High-Fidelity Detection:** Detect players, referees, and the ball with sub-pixel accuracy.
+- **Persistent Multi-Object Tracking:** Assign and maintain unique tracking IDs seamlessly across frames using `ByteTrack`.
+- **Automated Team Classification:** Dynamically cluster jersey colors via K-Means to intelligently assign players to their respective teams (Team 1, Team 2) on-the-fly.
+- **Tactical HUD Visualization:** Real-time analytics overlay, displaying frame rates, live player counts, tracking IDs, and team-colored bounding boxes.
 
 ---
 
-## 🗺️ Roadmap & Milestones
+## Roadmap & Milestones
 
 <details open>
 <summary><b>Phase 1: Vision & Tracking (Current Focus)</b></summary>
@@ -61,7 +61,7 @@
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Setup Environment
 It is highly recommended to use a Python virtual environment. A CUDA-capable GPU is heavily recommended for inference speed.
@@ -103,7 +103,7 @@ pytest tests/ -v
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```text
 FOOTBALL_ANALYSIS/
