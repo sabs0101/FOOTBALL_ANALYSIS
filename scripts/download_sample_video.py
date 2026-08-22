@@ -1,5 +1,5 @@
 """
-Download Bundesliga sample broadcast soccer match video.
+Download Bundesliga sample broadcast soccer match video in mp4.
 """
 
 from pathlib import Path
