@@ -33,9 +33,7 @@
 <summary><b>Phase 1: Vision & Tracking (Current Focus)</b></summary>
 <br>
 
-- [x] **Milestone 1**: Video $\rightarrow$ YOLO Player/Ball Detection $\rightarrow$ Annotated Output Video with Tactical HUD.
-- [x] **Milestone 2**: Multi-Object Tracking (ByteTrack / BoT-SORT) with Persistent Player IDs.
-- [x] **Milestone 6**: Automated Team & Referee Classification via Jersey Color Clustering.
+
 </details>
 
 <details>
