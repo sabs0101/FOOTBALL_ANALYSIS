@@ -1,4 +1,4 @@
-# Football Analytics Configuration
+﻿# Football Analytics Configuration
 
 # General execution settings
 system:
@@ -8,14 +8,76 @@ system:
 
 # Detection settings (Milestone 1)
 detection:
-  model_name: "yolov8m.pt"    # Options: "yolov8n.pt", "yolov8s.pt", "yolov8m.pt", "yolov8x.pt"
+  model_name: "yolov8m.pt"    # Options: "yolov8n.pt", "yolov8s.pt", "yolov8m.pt", "yolov8x.pt", "yolo11m.pt"
   model_dir: "models"
-  conf_threshold: 0.35        # Minimum confidence threshold
+  conf_threshold: 0.18        # High recall threshold enabled by pitch mask crowd-filtering
   iou_threshold: 0.50         # NMS IoU threshold
+  imgsz: 1280                 # High resolution inference for sharp distant player detection
   classes:
     person: 0                 # COCO class 0: Players, Goalkeeper, Referees
     sports_ball: 32           # COCO class 32: Football
   filter_classes: [0, 32]     # Classes to retain during inference
+
+# Tracking settings (Milestone 2)
+tracking:
+  tracker_type: "bytetrack"   # Options: "bytetrack"
+  track_activation_threshold: 0.20
+  lost_track_buffer: 30       # Frames to keep lost tracks alive (e.g. 1.2s at 25fps)
+  minimum_matching_threshold: 0.70
+  frame_rate: 25
+  draw_trails: true           # Draw player motion paths / trails
+  trail_length: 20            # Number of historical frames for motion trail
+
+# Pitch & Line Detection settings (Milestone 3)
+pitch:
+  enable_pitch_filter: true   # Automatically filter out false detections in crowd/stands/dugout
+  hsv_green_lower: [32, 45, 40]    # Lower HSV bound for grass segmentation
+  hsv_green_upper: [85, 255, 235]  # Upper HSV bound for grass segmentation
+  morph_kernel_size: 15            # Morphological smoothing kernel size
+  min_pitch_area_ratio: 0.20       # Minimum field contour area as ratio of total frame
+  white_contrast_thresh: 18        # Contrast threshold for white field markings
+  min_line_length: 60
+  max_line_gap: 40
+
+# Calibration & Homography settings (Milestone 4)
+calibration:
+  pitch_length_meters: 105.0
+  pitch_width_meters: 68.0
+  ransac_threshold: 5.0
+
+# Physical Kinematics & Analytics (Milestone 5)
+analytics:
+  enable_speed_estimation: true
+  window_size: 18             # Sliding window frames for regression velocity (~0.72s)
+  max_realistic_speed_kmh: 38.0 # Sprint speed clamp
+  min_speed_threshold_kmh: 2.5 # Minimum speed to filter stationary jitter
+
+# Team Identification & Jersey Clustering (Milestone 6)
+team:
+  enable_team_classification: true
+  n_teams: 2
+  history_window: 20          # Rolling majority vote window per track
+  referee_dist_threshold: 85.0
+  team_a_name: "Borussia M'gladbach"
+  team_b_name: "Wolfsburg"
+
+# Advanced Tactical Analytics & Heatmaps (Milestone 7)
+tactics:
+  enable_spatial_control: true
+  enable_heatmaps: true
+  heatmap_output_dir: "outputs/heatmaps"
+  grid_resolution_meters: 1.0
+  gaussian_sigma: 35
+
+# 2D Tactical Radar Minimap settings (Milestones 4, 5, 6 & 7)
+radar:
+  enable_radar: true
+  radar_width: 380
+  radar_height: 245
+  position: "bottom_right"    # Options: "bottom_right", "bottom_left", "top_right"
+  player_dot_radius: 6
+  ball_dot_radius: 5
+  alpha: 0.95
 
 # Video Processing
 video:
@@ -28,15 +90,25 @@ visualization:
   draw_labels: true
   draw_confidences: true
   draw_hud: true              # Display FPS, frame counter, active player count HUD
+  draw_tracks: true           # Display persistent tracking IDs
+  draw_trails: true           # Display historical foot movement trails
+  draw_speed: true            # Display live metric speed (km/h) on player badges
+  draw_team: true             # Color-code by Team A vs Team B vs Referee
+  draw_pitch_boundary: false  # Highlight pitch polygon boundary
+  draw_pitch_lines: true      # Highlight detected pitch field lines
   box_thickness: 2
   text_scale: 0.5
-  player_box_color: [0, 215, 255]     # Bright Gold/Amber in BGR (or RGB depending on annotator)
+  player_box_color: [0, 215, 255]     # Bright Gold/Amber in BGR
   ball_box_color: [0, 0, 255]         # Red in BGR
+  pitch_line_color: [0, 255, 255]     # Cyan/Yellow in BGR
   hud_bg_color: [20, 24, 30]          # Dark sleek HUD slate
 
 # Paths
 paths:
   input_dir: "data/videos"
   test_dir: "data/test"
-  output_dir: "outputs/detections"
+  output_dir: "outputs/tracks"
+  pitch_output_dir: "outputs/pitch"
+  radar_output_dir: "outputs/radar"
+  detection_dir: "outputs/detections"
   log_dir: "outputs/logs"

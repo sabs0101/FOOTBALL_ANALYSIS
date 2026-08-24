@@ -1,4 +1,4 @@
-"""
+﻿"""
 Configuration loader and system utilities.
 """
 
@@ -20,7 +20,13 @@ def load_config(config_path: str = "config.yaml") -> Dict[str, Any]:
     """
     path = Path(config_path)
     if not path.exists():
-        raise FileNotFoundError(f"Configuration file not found at: {path.resolve()}")
+        # Fallback to project root relative to this module
+        project_root = Path(__file__).resolve().parent.parent.parent
+        fallback = project_root / config_path
+        if fallback.exists():
+            path = fallback
+        else:
+            raise FileNotFoundError(f"Configuration file not found at '{path.resolve()}' or '{fallback.resolve()}'")
 
     with open(path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
