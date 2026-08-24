@@ -1,0 +1,13 @@
+﻿# YOLOv8 Football Custom Training & Fine-Tuning Dataset Configuration
+# Benchmark: SoccerNet & Football Broadcast Annotation Standard
+
+path: ../data/dataset
+train: images/train
+val: images/val
+
+# Class definitions
+names:
+  0: player
+  1: goalkeeper
+  2: referee
+  3: ball
