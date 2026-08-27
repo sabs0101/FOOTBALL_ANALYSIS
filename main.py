@@ -1,4 +1,4 @@
-﻿"""
+"""
 AI-Based Football Broadcast Analysis and Tactical Reconstruction
 Pipeline Runner: Detection + Tracking + Pitch + Homography + Speed + Team ID + Tactics (Goalkeeper & Coach Refined)
 """
@@ -13,6 +13,7 @@ import cv2
 import numpy as np
 from tqdm import tqdm
 
+from src.preprocessing.preprocessor import FramePreprocessor
 from src.analytics.speed_distance import SpeedEstimator
 from src.calibration.homography import PitchHomography
 from src.calibration.template import PitchTemplate
@@ -31,6 +32,11 @@ from src.visualization.radar import TacticalRadar
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Football Analytics - Tactical Broadcast Reconstruction"
+    )
+    parser.add_argument(
+        "--preprocess",
+        action="store_true",
+        help="Enable CLAHE contrast enhancement and preprocessing",
     )
     parser.add_argument(
         "--source",
@@ -187,6 +193,18 @@ def run_pipeline(
     print(f" 2D Tactical Radar  : {'Enabled (Top-Down Minimap)' if enable_radar else 'Disabled'}")
     print(f"=======================================================\n")
 
+    # 0. Preprocessor
+    prep_cfg = config.get("preprocessing", {})
+    enable_preprocess = prep_cfg.get("enable_clahe", True)
+    preprocessor = FramePreprocessor(
+        enable_clahe=prep_cfg.get("enable_clahe", True),
+        clahe_clip_limit=prep_cfg.get("clahe_clip_limit", 2.0),
+        enable_gamma=prep_cfg.get("enable_gamma", False),
+        gamma=prep_cfg.get("gamma", 1.15),
+        denoise_method=prep_cfg.get("denoise_method", "none"),
+        blur_threshold=prep_cfg.get("blur_threshold", 100.0),
+    ) if enable_preprocess else None
+
     # 1. Detector
     detector = PlayerDetector(
         model_name=model_name,
@@ -303,13 +321,16 @@ def run_pipeline(
         for frame_idx, frame in tqdm(reader, total=total_frames, desc="Tactical Master Pipeline"):
             t0 = time.time()
 
+            # Step 0: Preprocessing & Contrast Enhancement
+            proc_frame = preprocessor.process(frame).frame if preprocessor is not None else frame
+
             # Step 1: Pitch & Line Detection
-            pitch_result = pitch_detector.detect_lines(frame)
+            pitch_result = pitch_detector.detect_lines(proc_frame)
             if pitch_result.pitch_area_ratio >= 0.20:
                 pitch_detected_count += 1
 
             # Step 2: YOLO Detection (imgsz=1280)
-            detections = detector.detect(frame, frame_idx=frame_idx)
+            detections = detector.detect(proc_frame, frame_idx=frame_idx)
 
             # Step 3: Touchline-bounded Crowd & Dugout Filtering
             if enable_pitch_filter and pitch_result.pitch_area_ratio >= 0.20:
