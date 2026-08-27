@@ -1,0 +1,77 @@
+{
+    "image": "sample_frame.jpg",
+    "dimensions": {
+        "width": 1920,
+        "height": 1080
+    },
+    "categories": [
+        {
+            "id": 0,
+            "name": "player"
+        },
+        {
+            "id": 1,
+            "name": "goalkeeper"
+        },
+        {
+            "id": 2,
+            "name": "referee"
+        },
+        {
+            "id": 3,
+            "name": "ball"
+        }
+    ],
+    "annotations": [
+        {
+            "id": 1,
+            "category_id": 0,
+            "bbox": [
+                706,
+                722,
+                31,
+                88
+            ]
+        },
+        {
+            "id": 2,
+            "category_id": 0,
+            "bbox": [
+                1160,
+                735,
+                57,
+                97
+            ]
+        },
+        {
+            "id": 3,
+            "category_id": 1,
+            "bbox": [
+                85,
+                495,
+                30,
+                67
+            ]
+        },
+        {
+            "id": 4,
+            "category_id": 2,
+            "bbox": [
+                1183,
+                379,
+                18,
+                58
+            ]
+        },
+        {
+            "id": 5,
+            "category_id": 3,
+            "bbox": [
+                840,
+                600,
+                15,
+                15
+            ]
+        }
+    ]
+}

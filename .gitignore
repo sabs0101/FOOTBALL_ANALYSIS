@@ -64,6 +64,8 @@ data/videos/*
 !data/videos/.gitkeep
 data/test/*
 !data/test/.gitkeep
+!data/test/sample_frame.jpg
+!data/test/sample_annotations.json
 outputs/*
 !outputs/.gitkeep
 outputs/detections/*

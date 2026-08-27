@@ -1,10 +1,10 @@
-﻿"""
+"""
 Homography Estimation and Coordinate Transformation Module.
 Computes 3x3 Homography Matrix (H) mapping 2D camera pixels to FIFA 2D pitch meters.
 """
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 import cv2
 import numpy as np
 
@@ -81,26 +81,28 @@ class PitchHomography:
             is_valid=True,
         )
 
-    def image_to_pitch(self, points_image: np.ndarray, H: np.ndarray) -> np.ndarray:
+    def image_to_pitch(self, points_image: np.ndarray, H: Any) -> np.ndarray:
         """
         Transform camera image coordinates (u, v) into real-world pitch coordinates (X, Y) in meters.
         """
         if len(points_image) == 0 or H is None:
             return np.empty((0, 2), dtype=np.float32)
 
+        mat = H.H if hasattr(H, "H") else H
         pts = np.asarray(points_image, dtype=np.float32).reshape(-1, 1, 2)
-        transformed = cv2.perspectiveTransform(pts, H)
+        transformed = cv2.perspectiveTransform(pts, mat)
         return transformed.reshape(-1, 2)
 
-    def pitch_to_image(self, points_pitch: np.ndarray, H_inv: np.ndarray) -> np.ndarray:
+    def pitch_to_image(self, points_pitch: np.ndarray, H_inv: Any) -> np.ndarray:
         """
         Project 2D pitch coordinates (X, Y) in meters back into the camera image space (u, v).
         """
         if len(points_pitch) == 0 or H_inv is None:
             return np.empty((0, 2), dtype=np.float32)
 
+        mat = H_inv.H_inv if hasattr(H_inv, "H_inv") else (H_inv.H if hasattr(H_inv, "H") else H_inv)
         pts = np.asarray(points_pitch, dtype=np.float32).reshape(-1, 1, 2)
-        transformed = cv2.perspectiveTransform(pts, H_inv)
+        transformed = cv2.perspectiveTransform(pts, mat)
         return transformed.reshape(-1, 2)
 
     def estimate_broadcast_homography(

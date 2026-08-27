@@ -1,10 +1,26 @@
-﻿# Football Analytics Configuration
+# Football Analytics Configuration
 
 # General execution settings
 system:
   device: "auto"              # Options: "auto", "cuda", "cpu", or GPU index like "0"
   half_precision: true        # Use FP16 on CUDA for ~2x speedup on RTX 4050
   seed: 42
+
+# Preprocessing & Frame Enhancement settings
+preprocessing:
+  enable_clahe: true          # CLAHE contrast enhancement on LAB luminance
+  clahe_clip_limit: 2.0
+  enable_gamma: false         # Gamma correction for low-light stadiums
+  gamma: 1.15
+  denoise_method: "none"      # Options: "none", "gaussian", "bilateral"
+  blur_threshold: 100.0       # Laplacian variance threshold for motion blur detection
+
+# Quantitative Evaluation settings
+evaluation:
+  eval_frames: 150
+  iou_threshold: 0.50
+  save_report: true
+  report_path: "outputs/evaluation/evaluation_report.json"
 
 # Detection settings (Milestone 1)
 detection:
