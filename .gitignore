@@ -66,8 +66,6 @@ data/test/*
 !data/test/.gitkeep
 !data/test/sample_frame.jpg
 !data/test/sample_annotations.json
-data/tsv_dataset/images/*
-!data/tsv_dataset/images/.gitkeep
 outputs/*
 !outputs/.gitkeep
 outputs/detections/*
