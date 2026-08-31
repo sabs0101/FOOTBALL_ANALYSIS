@@ -1,0 +1,322 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Football Tactical Analysis Engine | Match Analytics Dashboard</title>
+  <meta name="description" content="Real-time broadcast football computer vision, multi-object tracking, homography calibration, and tactical match reports.">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+</head>
+<body>
+
+  <div class="app-container">
+
+    <!-- TOP NAVIGATION BAR -->
+    <header class="header">
+      <div class="logo-section">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8 0-1.85.63-3.55 1.69-4.9L16.9 18.31C15.55 19.37 13.85 20 12 20zm6.31-3.1L7.1 5.69C8.45 4.63 10.15 4 12 4c4.41 0 8 3.59 8 8 0 1.85-.63 3.55-1.69 4.9z"/>
+          </svg>
+        </div>
+        <div class="logo-text">
+          <h1>AI FOOTBALL TACTICAL ENGINE</h1>
+          <p>Computer Vision & Kinematics Intelligence</p>
+        </div>
+      </div>
+
+      <div class="header-badges">
+        <div class="badge badge-cuda" id="gpu-badge">
+          <div class="pulse-dot"></div>
+          <span>CUDA:0 (RTX 4050 Active)</span>
+        </div>
+        <div class="badge">
+          <span>YOLOv8m + ByteTrack</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- =======================================================================
+         VIEW 1: UPLOAD & CONFIGURATION VIEW (HERO)
+         ======================================================================= -->
+    <main id="view-upload" class="view-panel active">
+      <section class="hero-section">
+        <h2 class="hero-title">Broadcast Football Match Intelligence</h2>
+        <p class="hero-subtitle">
+          Drag and drop match footage to automatically detect players, track motion paths, calibrate pitch geometry, and generate complete tactical match analytics.
+        </p>
+      </section>
+
+      <div class="main-grid">
+        <!-- LEFT: Drag & Drop Dropzone -->
+        <div class="glass-card">
+          <div class="dropzone" id="dropzone">
+            <input type="file" id="file-input" accept="video/mp4,video/avi,video/mov,video/mkv" style="display: none;">
+            <div class="dropzone-icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+            </div>
+            <div class="dropzone-text">
+              <h3>Drop Match Video Here</h3>
+              <p>Supports MP4, AVI, MOV, MKV (1080p / 720p 25-60 FPS)</p>
+            </div>
+            <div class="dropzone-file-info" id="file-info"></div>
+          </div>
+
+          <!-- Quick-Pick Sample Videos -->
+          <div class="preset-section">
+            <span class="section-label">Or Select Benchmark Sample Match</span>
+            <div class="preset-grid">
+              <div class="preset-card active" data-source="data/videos/sample_broadcast.mp4" id="preset-1">
+                <h4>Bundesliga Match #1</h4>
+                <span>1920x1080 • 750 Frames • Broadcast Tactical</span>
+              </div>
+              <div class="preset-card" data-source="data/videos/sample_match_2.mp4" id="preset-2">
+                <h4>Broadcast Sample #2</h4>
+                <span>638x402 • 138 Frames • Fast Transition</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT: Pipeline Options & Launch Button -->
+        <div class="glass-card">
+          <h3 class="config-header">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-emerald)" stroke-width="2">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+            Tactical Analysis Features
+          </h3>
+
+          <div class="toggle-group">
+            <div class="toggle-item">
+              <div class="toggle-info">
+                <h5>2D Top-Down Minimap Radar</h5>
+                <p>Real-time bird's-eye pitch radar overlay</p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="cfg-radar" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div class="toggle-item">
+              <div class="toggle-info">
+                <h5>Physical Velocity & Speed Badges</h5>
+                <p>Linear regression live speed (km/h) & sprint alerts</p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="cfg-speed" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div class="toggle-item">
+              <div class="toggle-info">
+                <h5>Voronoi Pitch Space Dominance</h5>
+                <p>Spatial territory control % & team convex hulls</p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="cfg-tactics" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div class="toggle-item">
+              <div class="toggle-info">
+                <h5>2D Positional Heatmaps</h5>
+                <p>Gaussian KDE team match density maps</p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="cfg-heatmaps" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div class="toggle-item">
+              <div class="toggle-info">
+                <h5>CLAHE Luminance Enhancement</h5>
+                <p>Adaptive contrast equalization for stadium lighting</p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="cfg-clahe" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <button id="btn-process" class="btn-primary">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+            Start AI Tactical Analysis
+          </button>
+        </div>
+      </div>
+    </main>
+
+    <!-- =======================================================================
+         VIEW 2: LIVE AI PROCESSING MODAL / HUD
+         ======================================================================= -->
+    <section id="view-processing" class="view-panel">
+      <div class="glass-card processing-card">
+        <div class="progress-spinner-container">
+          <div class="spinner-ring"></div>
+          <div class="spinner-text" id="progress-pct">0%</div>
+        </div>
+
+        <h3 class="progress-title" id="progress-status-text">Analyzing Broadcast Match Footage</h3>
+        <p class="progress-subtitle">Executing YOLOv8m detection, ByteTrack Kalman tracking, and Homography projection...</p>
+
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill" id="progress-bar"></div>
+        </div>
+
+        <div class="live-metrics-row">
+          <div class="live-metric">
+            <h6>Frame Progress</h6>
+            <span id="metric-frame-count">0 / 0</span>
+          </div>
+          <div class="live-metric">
+            <h6>Inference Speed</h6>
+            <span id="metric-fps">0.0 FPS</span>
+          </div>
+          <div class="live-metric">
+            <h6>Players On Field</h6>
+            <span id="metric-players">0</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =======================================================================
+         VIEW 3: MATCH ANALYSIS REPORT & VIDEO RECONSTRUCTION
+         ======================================================================= -->
+    <section id="view-results" class="view-panel">
+      <div class="report-header">
+        <div class="report-title-box">
+          <h2>Match Tactical Intelligence Report</h2>
+          <p id="report-match-subtitle">Borussia M'gladbach vs. VfL Wolfsburg • Broadcast Analytics Summary</p>
+        </div>
+        <div class="report-actions">
+          <a id="btn-download-video" class="btn-secondary" download href="#">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            Download Video (.mp4)
+          </a>
+          <a id="btn-download-tsv" class="btn-secondary" download href="data/processed/match_annotations.tsv">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+            </svg>
+            Export Dataset (.tsv)
+          </a>
+          <button id="btn-new-analysis" class="btn-secondary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="1 4 1 10 7 10"></polyline>
+              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+            </svg>
+            Analyze Another Match
+          </button>
+        </div>
+      </div>
+
+      <!-- KEY PERFORMANCE INDICATORS (KPIs) -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-label">Pitch Space Dominance</div>
+          <div class="kpi-value" id="kpi-possession">59.0% vs 41.0%</div>
+          <div class="possession-bar-container">
+            <div class="possession-split-bar">
+              <div class="possession-team-a" id="bar-team-a" style="width: 59%;"></div>
+              <div class="possession-team-b" id="bar-team-b" style="width: 41%;"></div>
+            </div>
+            <div class="possession-legend">
+              <span style="color: var(--team-a-color);" id="lbl-team-a">Team A: 59.0%</span>
+              <span style="color: var(--team-b-color);" id="lbl-team-b">Team B: 41.0%</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="kpi-card cyan">
+          <div class="kpi-label">Peak Sprint Recorded</div>
+          <div class="kpi-value" id="kpi-top-speed">38.0 km/h</div>
+          <div class="kpi-subtext" id="kpi-top-player">Player #19 • High-Intensity Sprint</div>
+        </div>
+
+        <div class="kpi-card amber">
+          <div class="kpi-label">Active Field Population</div>
+          <div class="kpi-value" id="kpi-players">22.4 Avg</div>
+          <div class="kpi-subtext" id="kpi-roles">20 Outfield • 2 GKs • 1 Referee</div>
+        </div>
+
+        <div class="kpi-card purple">
+          <div class="kpi-label">Pitch Lock & Geometry</div>
+          <div class="kpi-value" id="kpi-homography">100.0%</div>
+          <div class="kpi-subtext">Reprojection RMSE: 0.000m</div>
+        </div>
+      </div>
+
+      <!-- MAIN VIDEO & TACTICAL ANALYSIS GRID -->
+      <div class="report-content-grid">
+        <!-- LEFT: Annotated Video Player -->
+        <div class="video-player-card">
+          <div class="video-container">
+            <video id="results-video" controls autoplay loop playsinline>
+              <source id="video-source" src="" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+          </div>
+        </div>
+
+        <!-- RIGHT: Positional Heatmaps -->
+        <div class="glass-card">
+          <div class="tab-container">
+            <button class="tab-btn active" data-tab="heatmap-team-a">Team A Heatmap</button>
+            <button class="tab-btn" data-tab="heatmap-team-b">Team B Heatmap</button>
+            <button class="tab-btn" data-tab="heatmap-all">Full Match Density</button>
+          </div>
+
+          <div class="heatmap-preview">
+            <img id="heatmap-img" src="outputs/heatmaps/heatmap_team_a.png" alt="Positional Tactical Heatmap">
+          </div>
+        </div>
+      </div>
+
+      <!-- BOTTOM: Player Kinematics & Speed Leaderboard -->
+      <div class="glass-card table-card">
+        <div class="table-header-box">
+          <h3>Player Speed & Kinematics Leaderboard</h3>
+          <span class="badge">2D Least-Squares Kinematics Engine</span>
+        </div>
+        <table class="custom-table" id="leaderboard-table">
+          <thead>
+            <tr>
+              <th>Player Track ID</th>
+              <th>Assigned Squad</th>
+              <th>Peak Speed</th>
+              <th>Distance Covered</th>
+              <th>Movement Intensity</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboard-body">
+            <!-- Dynamically populated via app.js -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

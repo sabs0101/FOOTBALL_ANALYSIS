@@ -66,6 +66,8 @@ data/test/*
 !data/test/.gitkeep
 !data/test/sample_frame.jpg
 !data/test/sample_annotations.json
+data/uploads/*
+!data/uploads/.gitkeep
 outputs/*
 !outputs/.gitkeep
 outputs/detections/*
