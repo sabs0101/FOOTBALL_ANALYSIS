@@ -1,4 +1,4 @@
-﻿<div align="center">
+<div align="center">
   <h1>AI Football Tactical Analysis & Kinematics Engine</h1>
   <p><strong>Real-Time Broadcast Football Computer Vision, Preprocessing, Multi-Object Tracking, Homography Calibration & Quantitative Benchmarks</strong></p>
 
@@ -172,30 +172,37 @@ python scripts/download_sample_video.py
 
 ## ⚡ Execution Guide
 
-### 1. Run Master Tactical Analytics Pipeline
+### 1. Launch Interactive Tactical Web Dashboard
+Starts the local web server with drag-and-drop video upload, real-time telemetry, and match reports:
+```powershell
+python app.py 8000
+```
+Open **`http://localhost:8000`** in your browser.
+
+### 2. Run Master Tactical Analytics Pipeline (CLI)
 Processes input video and produces the full tactical broadcast master video with HUD and 2D Radar:
 ```powershell
 python main.py --source data/videos/sample_broadcast.mp4 --device 0
 ```
 
-### 2. Run Exploratory Data Analysis (EDA)
+### 3. Run Exploratory Data Analysis (EDA)
 Inspects video properties, turf color profile, and lighting distributions:
 ```powershell
 python eda.py --source data/videos/sample_broadcast.mp4 --output outputs/eda/eda_report.json
 ```
 
-### 3. Run Quantitative Benchmark Evaluation
+### 4. Run Quantitative Benchmark Evaluation
 Runs detection, tracking, homography, and kinematics evaluation benchmarks:
 ```powershell
 python evaluate.py --source data/videos/sample_broadcast.mp4 --device 0 --frames 150
 ```
 
-### 4. Fine-Tune Custom YOLO Model (Transfer Learning)
+### 5. Fine-Tune Custom YOLO Model (Transfer Learning)
 ```powershell
 python train.py --data data/dataset/data.yaml --model yolov8m.pt --epochs 50 --batch 16 --device 0
 ```
 
-### 5. Run Automated Unit Test Suite
+### 6. Run Automated Unit Test Suite
 ```powershell
 pytest tests/ -v
 ```
