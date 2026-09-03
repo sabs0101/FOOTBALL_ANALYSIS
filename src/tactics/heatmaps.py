@@ -1,4 +1,4 @@
-﻿"""
+"""
 Positional Density Heatmap Module for Football Tactical Analysis (Polished & Hardened).
 Generates 2D Gaussian Kernel Density Estimation (KDE) heatmaps with 99th-percentile normalization.
 """
@@ -165,6 +165,13 @@ class HeatmapGenerator:
 
         img_b = self.generate_team_heatmap(1, "Team B (Wolfsburg)")
         cv2.imwrite(str(out_path / "heatmap_team_b.png"), img_b)
+
+        # Full Match Density
+        all_pts = []
+        for pts_list in self.player_positions.values():
+            all_pts.extend(pts_list)
+        img_all = self.render_heatmap(all_pts, title="FULL MATCH POSITIONAL DENSITY")
+        cv2.imwrite(str(out_path / "heatmap_all_players.png"), img_all)
 
         # Export Top 4 Most Active Players
         sorted_players = sorted(

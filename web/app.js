@@ -1,4 +1,4 @@
-﻿/**
+/**
  * AI Football Tactical Analytics - Frontend Controller
  */
 
@@ -216,9 +216,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Update Video Player
     const videoUrl = `${results.output_video}?t=${Date.now()}`;
-    videoSource.src = videoUrl;
+    resultsVideo.muted = true;
+    resultsVideo.src = videoUrl;
     resultsVideo.load();
-    resultsVideo.play().catch(() => {});
+    resultsVideo.play().catch((e) => console.log('Autoplay deferred by browser policy:', e));
     btnDownloadVideo.href = results.output_video;
 
     // Update KPI Metrics

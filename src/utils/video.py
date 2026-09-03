@@ -95,7 +95,8 @@ class VideoReader:
 
 class VideoWriter:
     """
-    Video writer utility to save processed frames into standard MP4 format.
+    High-performance Video writer utility that encodes broadcast-ready H.264 MP4
+    with universal HTML5 browser playback support (PyAV + OpenCV fallback).
     """
 
     def __init__(
@@ -104,7 +105,7 @@ class VideoWriter:
         fps: float,
         width: int,
         height: int,
-        codec: str = "mp4v",
+        codec: str = "h264",
     ):
         self.output_path = Path(output_path)
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -112,13 +113,27 @@ class VideoWriter:
         self.fps = fps
         self.width = width
         self.height = height
-        fourcc = cv2.VideoWriter_fourcc(*codec)
-        self.writer = cv2.VideoWriter(
-            str(self.output_path), fourcc, fps, (width, height)
-        )
+        self.use_av = False
+        self.av_container = None
+        self.av_stream = None
+        self.cv_writer = None
 
-        if not self.writer.isOpened():
-            raise RuntimeError(f"Failed to initialize VideoWriter at: {self.output_path}")
+        try:
+            import av
+            self.av_container = av.open(str(self.output_path), mode="w")
+            self.av_stream = self.av_container.add_stream("h264", rate=int(round(fps)))
+            self.av_stream.width = width
+            self.av_stream.height = height
+            self.av_stream.pix_fmt = "yuv420p"
+            self.av_stream.options = {"crf": "21", "preset": "veryfast"}
+            self.use_av = True
+        except Exception:
+            fourcc_code = "avc1" if codec == "h264" else codec
+            fourcc = cv2.VideoWriter_fourcc(*fourcc_code)
+            self.cv_writer = cv2.VideoWriter(str(self.output_path), fourcc, fps, (width, height))
+            if not self.cv_writer.isOpened():
+                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                self.cv_writer = cv2.VideoWriter(str(self.output_path), fourcc, fps, (width, height))
 
     def __enter__(self):
         return self
@@ -129,8 +144,25 @@ class VideoWriter:
     def write(self, frame: np.ndarray):
         if frame.shape[1] != self.width or frame.shape[0] != self.height:
             frame = cv2.resize(frame, (self.width, self.height))
-        self.writer.write(frame)
+
+        if self.use_av and self.av_container is not None:
+            import av
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            av_frame = av.VideoFrame.from_ndarray(rgb, format="rgb24")
+            for packet in self.av_stream.encode(av_frame):
+                self.av_container.mux(packet)
+        elif self.cv_writer is not None:
+            self.cv_writer.write(frame)
 
     def release(self):
-        if self.writer is not None:
-            self.writer.release()
+        if self.use_av and self.av_container is not None:
+            try:
+                for packet in self.av_stream.encode():
+                    self.av_container.mux(packet)
+                self.av_container.close()
+            except Exception:
+                pass
+            self.av_container = None
+        elif self.cv_writer is not None:
+            self.cv_writer.release()
+            self.cv_writer = None

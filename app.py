@@ -108,7 +108,7 @@ def run_pipeline_task(task_id: str, payload: dict):
         Path("outputs/tracks").mkdir(parents=True, exist_ok=True)
 
         reader = VideoReader(str(source_path))
-        writer = VideoWriter(output_path=out_video_path, fps=fps, width=w, height=h, codec="mp4v")
+        writer = VideoWriter(output_path=out_video_path, fps=fps, width=w, height=h, codec="h264")
 
         player_counts = []
         all_speeds = []
@@ -340,9 +340,43 @@ class DashboardHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
             self.send_error(404, f"File not found: {filepath}")
             return
 
+        file_size = path.stat().st_size
+        range_header = self.headers.get("Range")
+
+        if range_header and range_header.startswith("bytes="):
+            try:
+                # Parse Range: bytes=start-end
+                range_val = range_header.split("=")[1].strip()
+                parts = range_val.split("-")
+                start = int(parts[0]) if parts[0] else 0
+                end = int(parts[1]) if len(parts) > 1 and parts[1] else file_size - 1
+                if start >= file_size or end >= file_size or start > end:
+                    self.send_response(416, "Requested Range Not Satisfiable")
+                    self.send_header("Content-Range", f"bytes */{file_size}")
+                    self.end_headers()
+                    return
+
+                length = end - start + 1
+                self.send_response(206, "Partial Content")
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
+                self.send_header("Content-Length", str(length))
+                self.send_header("Accept-Ranges", "bytes")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+
+                with open(path, "rb") as f:
+                    f.seek(start)
+                    self.wfile.write(f.read(length))
+                return
+            except Exception:
+                pass
+
+        # Standard 200 OK
         self.send_response(200)
         self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(path.stat().st_size))
+        self.send_header("Content-Length", str(file_size))
+        self.send_header("Accept-Ranges", "bytes")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
 
