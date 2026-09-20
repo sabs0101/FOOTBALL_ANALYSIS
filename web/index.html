@@ -43,10 +43,59 @@
          ======================================================================= -->
     <main id="view-upload" class="view-panel active">
       <section class="hero-section">
+        <div class="hero-pill-badge">
+          <span class="pulse-beacon"></span>
+          <span>FIFA Pitch Analytics • 105m × 68m Top-Down Calibration</span>
+        </div>
         <h2 class="hero-title">Broadcast Football Match Intelligence</h2>
         <p class="hero-subtitle">
           Drag and drop match footage to automatically detect players, track motion paths, track the ball trajectory with Kalman smoothing, calibrate pitch geometry, and calculate team possession splits.
         </p>
+      </section>
+
+      <!-- INTERACTIVE CINEMATIC KICK SIMULATION STAGE -->
+      <section class="hero-kick-stage" id="hero-kick-stage">
+        <div class="kick-canvas-wrapper">
+          <canvas id="kick-canvas"></canvas>
+          <div class="kick-overlay-ui">
+            <div class="kick-status-tag" id="kick-status-tag">
+              <span class="pulse-beacon-emerald"></span>
+              <span id="kick-status-text">SCROLL MOUSE OR CLICK TO STRIKE INTO TOP CORNER</span>
+            </div>
+            <div class="kick-controls-bar">
+              <button class="kick-action-btn" id="btn-strike-ball" type="button">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+                <span>⚡ Power Strike (118 km/h)</span>
+              </button>
+              <button class="kick-action-btn secondary" id="btn-reset-kick" type="button">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M23 4v6h-6"></path><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                </svg>
+                <span>Reset Shot</span>
+              </button>
+              <div class="kick-telemetry-badge">
+                <span class="telemetry-label">Trajectory:</span>
+                <span class="telemetry-val" id="kick-curve-val">Magnus Curve +18.4°</span>
+              </div>
+              <div class="kick-telemetry-badge">
+                <span class="telemetry-label">Strike Velocity:</span>
+                <span class="telemetry-val" id="kick-speed-val">118.2 km/h</span>
+              </div>
+              <div class="kick-telemetry-badge">
+                <span class="telemetry-label">Target Zone:</span>
+                <span class="telemetry-val target-zone" id="kick-target-val">Top Right Bins</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="scroll-down-hint" id="scroll-hint">
+          <div class="mouse-icon">
+            <div class="mouse-wheel"></div>
+          </div>
+          <span>Scroll mouse to scrub shot trajectory & explore tactical pipeline</span>
+        </div>
       </section>
 
       <div class="main-grid">
