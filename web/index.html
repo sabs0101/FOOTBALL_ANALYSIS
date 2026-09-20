@@ -23,7 +23,7 @@
         </div>
         <div class="logo-text">
           <h1>AI FOOTBALL TACTICAL ENGINE</h1>
-          <p>Computer Vision & Kinematics Intelligence</p>
+          <p>Computer Vision & Kinematics Intelligence (Milestone 8)</p>
         </div>
       </div>
 
@@ -33,7 +33,7 @@
           <span>CUDA:0 (RTX 4050 Active)</span>
         </div>
         <div class="badge">
-          <span>YOLOv8m + ByteTrack</span>
+          <span>YOLOv8m + ByteTrack + Kalman</span>
         </div>
       </div>
     </header>
@@ -45,7 +45,7 @@
       <section class="hero-section">
         <h2 class="hero-title">Broadcast Football Match Intelligence</h2>
         <p class="hero-subtitle">
-          Drag and drop match footage to automatically detect players, track motion paths, calibrate pitch geometry, and generate complete tactical match analytics.
+          Drag and drop match footage to automatically detect players, track motion paths, track the ball trajectory with Kalman smoothing, calibrate pitch geometry, and calculate team possession splits.
         </p>
       </section>
 
@@ -102,6 +102,17 @@
               </div>
               <label class="switch">
                 <input type="checkbox" id="cfg-radar" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div class="toggle-item">
+              <div class="toggle-info">
+                <h5>Ball Tracking & Possession Engine</h5>
+                <p>Kalman trajectory smoothing, gap interpolation & carrier beacon</p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="cfg-ball" checked>
                 <span class="slider"></span>
               </label>
             </div>
@@ -172,7 +183,7 @@
         </div>
 
         <h3 class="progress-title" id="progress-status-text">Analyzing Broadcast Match Footage</h3>
-        <p class="progress-subtitle">Executing YOLOv8m detection, ByteTrack Kalman tracking, and Homography projection...</p>
+        <p class="progress-subtitle">Executing YOLOv8m detection, ByteTrack tracking, Kalman Ball Estimation & Possession assignment...</p>
 
         <div class="progress-bar-track">
           <div class="progress-bar-fill" id="progress-bar"></div>
@@ -233,30 +244,30 @@
       <!-- KEY PERFORMANCE INDICATORS (KPIs) -->
       <div class="kpi-grid">
         <div class="kpi-card">
-          <div class="kpi-label">Pitch Space Dominance</div>
-          <div class="kpi-value" id="kpi-possession">59.0% vs 41.0%</div>
+          <div class="kpi-label">On-Ball Possession Split</div>
+          <div class="kpi-value" id="kpi-possession">58.0% vs 42.0%</div>
           <div class="possession-bar-container">
             <div class="possession-split-bar">
-              <div class="possession-team-a" id="bar-team-a" style="width: 59%;"></div>
-              <div class="possession-team-b" id="bar-team-b" style="width: 41%;"></div>
+              <div class="possession-team-a" id="bar-team-a" style="width: 58%;"></div>
+              <div class="possession-team-b" id="bar-team-b" style="width: 42%;"></div>
             </div>
             <div class="possession-legend">
-              <span style="color: var(--team-a-color);" id="lbl-team-a">Team A: 59.0%</span>
-              <span style="color: var(--team-b-color);" id="lbl-team-b">Team B: 41.0%</span>
+              <span style="color: var(--team-a-color);" id="lbl-team-a">Team A: 58.0%</span>
+              <span style="color: var(--team-b-color);" id="lbl-team-b">Team B: 42.0%</span>
             </div>
           </div>
         </div>
 
         <div class="kpi-card cyan">
-          <div class="kpi-label">Peak Sprint Recorded</div>
-          <div class="kpi-value" id="kpi-top-speed">38.0 km/h</div>
-          <div class="kpi-subtext" id="kpi-top-player">Player #19 • High-Intensity Sprint</div>
+          <div class="kpi-label">Possession Turnovers</div>
+          <div class="kpi-value" id="kpi-turnovers">6 Turnovers</div>
+          <div class="kpi-subtext" id="kpi-top-carrier">Top Carrier: Player #19</div>
         </div>
 
         <div class="kpi-card amber">
-          <div class="kpi-label">Active Field Population</div>
-          <div class="kpi-value" id="kpi-players">22.4 Avg</div>
-          <div class="kpi-subtext" id="kpi-roles">20 Outfield • 2 GKs • 1 Referee</div>
+          <div class="kpi-label">Peak Sprint Recorded</div>
+          <div class="kpi-value" id="kpi-top-speed">38.0 km/h</div>
+          <div class="kpi-subtext" id="kpi-top-player">Player #19 • High-Intensity Sprint</div>
         </div>
 
         <div class="kpi-card purple">

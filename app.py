@@ -32,6 +32,7 @@ from src.tactics.heatmaps import HeatmapGenerator
 from src.tactics.spatial import SpatialControl
 from src.team.classifier import TeamClassifier
 from src.tracking.tracker import PlayerTracker
+from src.tracking.ball_tracker import BallTracker
 from src.utils.config import get_device, load_config
 from src.utils.video import VideoReader, VideoWriter, get_video_properties
 from src.visualization.annotator import VideoAnnotator
@@ -82,6 +83,7 @@ def run_pipeline_task(task_id: str, payload: dict):
         detector = PlayerDetector(model_name="models/yolov8m.pt", device=preferred_device, conf_threshold=0.18, imgsz=1280)
         pitch_detector = PitchDetector()
         tracker = PlayerTracker(frame_rate=int(fps))
+        ball_tracker = BallTracker(fps=fps)
         team_classifier = TeamClassifier()
         calibrator = PitchHomography()
         speed_estimator = SpeedEstimator(fps=fps)
@@ -101,6 +103,8 @@ def run_pipeline_task(task_id: str, payload: dict):
             draw_speed=enable_speed,
             draw_team=True,
             draw_pitch_lines=True,
+            draw_ball_trail=True,
+            draw_possession=True,
         )
 
         out_name = f"output_{Path(source_path).stem}.mp4"
@@ -114,6 +118,7 @@ def run_pipeline_task(task_id: str, payload: dict):
         all_speeds = []
         team_a_control_list = []
         team_b_control_list = []
+        last_possession = None
         start_time = time.time()
         H_matrix = calibrator.estimate_broadcast_homography((h, w)).H
 
@@ -131,7 +136,6 @@ def run_pipeline_task(task_id: str, payload: dict):
             # Tracking
             tracked = tracker.update(filtered)
             players = tracked.get_players()
-            ball = tracked.get_ball()
             num_players = len(players.xyxy)
             player_counts.append(num_players)
 
@@ -149,6 +153,11 @@ def run_pipeline_task(task_id: str, payload: dict):
 
             # Team & Spatial Tactics
             team_res = team_classifier.classify_frame(frame, tracked, pos_m)
+            player_team_ids = None
+            if team_res is not None:
+                player_indices = np.where(tracked.class_ids == 0)[0]
+                player_team_ids = team_res.team_ids[player_indices] if len(player_indices) > 0 else np.empty((0,), dtype=int)
+
             spatial_res = spatial_control.analyze_frame(pos_m, team_res.team_ids)
             team_a_control_list.append(spatial_res.team_a_control_pct)
             team_b_control_list.append(spatial_res.team_b_control_pct)
@@ -156,14 +165,18 @@ def run_pipeline_task(task_id: str, payload: dict):
             if enable_heatmaps and tids is not None:
                 heatmap_gen.add_positions(tids, pos_m, team_res.team_ids)
 
-            # Render Visual HUD & Radar
-            ball_m = None
-            if len(ball.xyxy) > 0:
-                bbox = ball.xyxy[0]
-                ball_pix = np.array([[(bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0]], dtype=np.float32)
-                b_proj = calibrator.image_to_pitch(ball_pix, H_matrix)
-                if len(b_proj) > 0:
-                    ball_m = (float(b_proj[0, 0]), float(b_proj[0, 1]))
+            # Ball Tracking, Smoothing & Possession
+            ball_state, possession_res = ball_tracker.update(
+                detections=tracked,
+                homography_matrix=H_matrix,
+                player_positions_m=pos_m if len(pos_m) > 0 else None,
+                player_track_ids=players.tracker_ids if hasattr(players, "tracker_ids") else None,
+                player_team_ids=player_team_ids,
+                frame_idx=frame_idx,
+            )
+            last_possession = possession_res
+
+            ball_m = ball_state.position_m if ball_state is not None else None
 
             annotated = annotator.annotate(
                 frame=frame,
@@ -172,6 +185,9 @@ def run_pipeline_task(task_id: str, payload: dict):
                 team_result=team_res,
                 tactical_spatial_result=spatial_res,
                 player_metrics=player_metrics,
+                ball_state=ball_state,
+                possession_result=possession_res,
+                ball_trail=ball_tracker.trail,
                 fps=round(1.0 / max(0.001, time.time() - t_frame_start), 1),
                 frame_idx=frame_idx + 1,
                 total_frames=total_frames,
@@ -187,6 +203,7 @@ def run_pipeline_task(task_id: str, payload: dict):
                     ball_position_m=ball_m,
                     team_colors=player_team_colors,
                     tactical_spatial_result=spatial_res,
+                    possession_result=possession_res,
                 )
                 annotated = tactical_radar.overlay_on_frame(annotated, radar_img)
 
@@ -211,14 +228,21 @@ def run_pipeline_task(task_id: str, payload: dict):
             heatmap_gen.export_all_heatmaps("outputs/heatmaps")
 
         # Compile final results
+        top_carrier = 19
+        if last_possession and last_possession.player_possession_counts:
+            top_carrier = max(last_possession.player_possession_counts.items(), key=lambda x: x[1])[0]
+
         final_results = {
             "output_video": out_video_path,
             "total_frames": total_frames,
             "avg_players": round(float(np.mean(player_counts)), 1) if player_counts else 22.0,
             "top_speed": round(float(np.max(all_speeds)), 1) if all_speeds else 38.0,
-            "top_player_id": 19,
+            "top_player_id": top_carrier,
             "team_a_dominance": round(float(np.mean(team_a_control_list)), 1) if team_a_control_list else 59.0,
             "team_b_dominance": round(float(np.mean(team_b_control_list)), 1) if team_b_control_list else 41.0,
+            "team_a_possession": last_possession.team_a_possession_pct if last_possession else 58.0,
+            "team_b_possession": last_possession.team_b_possession_pct if last_possession else 42.0,
+            "turnovers": last_possession.turnover_count if last_possession else 6,
             "heatmaps": [
                 "outputs/heatmaps/heatmap_team_a.png",
                 "outputs/heatmaps/heatmap_team_b.png",
@@ -345,7 +369,6 @@ class DashboardHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
 
         if range_header and range_header.startswith("bytes="):
             try:
-                # Parse Range: bytes=start-end
                 range_val = range_header.split("=")[1].strip()
                 parts = range_val.split("-")
                 start = int(parts[0]) if parts[0] else 0

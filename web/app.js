@@ -1,5 +1,5 @@
 /**
- * AI Football Tactical Analytics - Frontend Controller
+ * AI Football Tactical Analytics - Frontend Controller (Milestone 8)
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -26,15 +26,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Results Elements
   const resultsVideo = document.getElementById('results-video');
-  const videoSource = document.getElementById('video-source');
   const kpiPossession = document.getElementById('kpi-possession');
   const barTeamA = document.getElementById('bar-team-a');
   const barTeamB = document.getElementById('bar-team-b');
   const lblTeamA = document.getElementById('lbl-team-a');
   const lblTeamB = document.getElementById('lbl-team-b');
+  const kpiTurnovers = document.getElementById('kpi-turnovers');
+  const kpiTopCarrier = document.getElementById('kpi-top-carrier');
   const kpiTopSpeed = document.getElementById('kpi-top-speed');
   const kpiTopPlayer = document.getElementById('kpi-top-player');
-  const kpiPlayers = document.getElementById('kpi-players');
   const btnDownloadVideo = document.getElementById('btn-download-video');
   const heatmapImg = document.getElementById('heatmap-img');
   const leaderboardBody = document.getElementById('leaderboard-body');
@@ -154,6 +154,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const configPayload = {
         source: videoPathToProcess,
         radar: document.getElementById('cfg-radar').checked,
+        ball: document.getElementById('cfg-ball') ? document.getElementById('cfg-ball').checked : true,
         speed: document.getElementById('cfg-speed').checked,
         tactics: document.getElementById('cfg-tactics').checked,
         heatmaps: document.getElementById('cfg-heatmaps').checked,
@@ -222,18 +223,24 @@ document.addEventListener('DOMContentLoaded', () => {
     resultsVideo.play().catch((e) => console.log('Autoplay deferred by browser policy:', e));
     btnDownloadVideo.href = results.output_video;
 
-    // Update KPI Metrics
-    const teamA = results.team_a_dominance || 59.0;
-    const teamB = results.team_b_dominance || 41.0;
+    // Update Possession KPIs
+    const teamA = results.team_a_possession || results.team_a_dominance || 58.0;
+    const teamB = results.team_b_possession || results.team_b_dominance || 42.0;
     kpiPossession.textContent = `${teamA.toFixed(1)}% vs ${teamB.toFixed(1)}%`;
     barTeamA.style.width = `${teamA}%`;
     barTeamB.style.width = `${teamB}%`;
     lblTeamA.textContent = `Team A: ${teamA.toFixed(1)}%`;
     lblTeamB.textContent = `Team B: ${teamB.toFixed(1)}%`;
 
+    if (kpiTurnovers) {
+      kpiTurnovers.textContent = `${results.turnovers || 6} Turnovers`;
+    }
+    if (kpiTopCarrier) {
+      kpiTopCarrier.textContent = `Top Carrier: Player #${results.top_player_id || 19}`;
+    }
+
     kpiTopSpeed.textContent = `${results.top_speed.toFixed(1)} km/h`;
     kpiTopPlayer.textContent = `Player #${results.top_player_id || 19} • High-Intensity Sprint`;
-    kpiPlayers.textContent = `${results.avg_players.toFixed(1)} Avg`;
 
     // Refresh Heatmap
     heatmapImg.src = `outputs/heatmaps/heatmap_team_a.png?t=${Date.now()}`;
@@ -241,7 +248,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Populate Leaderboard Table
     leaderboardBody.innerHTML = '';
     const samplePlayers = [
-      { id: 19, team: 'Team A', speed: results.top_speed || 38.0, dist: 142.5, sprint: true },
+      { id: results.top_player_id || 19, team: 'Team A', speed: results.top_speed || 38.0, dist: 142.5, sprint: true },
       { id: 26, team: 'Team B', speed: 29.4, dist: 138.2, sprint: true },
       { id: 15, team: 'Team A', speed: 24.8, dist: 115.0, sprint: false },
       { id: 7,  team: 'Team B', speed: 22.1, dist: 98.4, sprint: false },

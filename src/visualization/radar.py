@@ -1,7 +1,8 @@
-﻿"""
-2D Tactical Pitch Radar Minimap Module for Football Analytics (Milestone 7).
+"""
+2D Tactical Pitch Radar Minimap Module for Football Analytics (Milestone 7 & 8).
 Renders real-world metric player positions (X, Y), Team Convex Hulls (Compactness),
-and Voronoi Pitch Space Control dominance onto a top-down tactical pitch display.
+Voronoi Pitch Space Control dominance, Smoothed Ball Dot, and Possessing Carrier Beacon
+onto a top-down tactical pitch display.
 """
 
 from typing import Any, Dict, List, Optional, Tuple
@@ -88,6 +89,7 @@ class TacticalRadar:
         ball_position_m: Optional[Tuple[float, float]] = None,
         team_colors: Optional[List[Tuple[int, int, int]]] = None,
         tactical_spatial_result: Optional[Any] = None,
+        possession_result: Optional[Any] = None,
     ) -> np.ndarray:
         """
         Draw active players, team convex hulls, ball, and territory dominance on the 2D pitch canvas.
@@ -101,8 +103,10 @@ class TacticalRadar:
             if tactical_spatial_result.team_b_hull is not None:
                 self.draw_convex_hull(radar_img, tactical_spatial_result.team_b_hull, (30, 220, 70), alpha=0.20)
 
-        # 2. Draw Player Dots
+        # 2. Draw Player Dots & Possession Ring
+        possessing_id = possession_result.possessing_player_id if possession_result else None
         num_players = len(player_positions_m)
+
         for i in range(num_players):
             xm, ym = player_positions_m[i]
             if not (-5.0 <= xm <= PITCH_LENGTH_M + 5.0 and -5.0 <= ym <= PITCH_WIDTH_M + 5.0):
@@ -116,15 +120,21 @@ class TacticalRadar:
             else:
                 color = get_track_color(tid)
 
+            # Highlight possessing player on radar with glowing beacon ring
+            if possessing_id is not None and tid == possessing_id:
+                cv2.circle(radar_img, (px, py), self.player_dot_radius + 5, (0, 215, 255), 2, cv2.LINE_AA)
+                cv2.circle(radar_img, (px, py), self.player_dot_radius + 8, (255, 255, 255), 1, cv2.LINE_AA)
+
             cv2.circle(radar_img, (px, py), self.player_dot_radius + 2, (0, 0, 0), -1, cv2.LINE_AA)
             cv2.circle(radar_img, (px, py), self.player_dot_radius, color, -1, cv2.LINE_AA)
             cv2.circle(radar_img, (px, py), self.player_dot_radius, (255, 255, 255), 1, cv2.LINE_AA)
 
-        # 3. Draw Football Dot
+        # 3. Draw Football Dot with Radiant Pulse
         if ball_position_m is not None:
             bxm, bym = ball_position_m
             if -5.0 <= bxm <= PITCH_LENGTH_M + 5.0 and -5.0 <= bym <= PITCH_WIDTH_M + 5.0:
                 bpx, bpy = self._meters_to_radar_pixels(bxm, bym)
+                cv2.circle(radar_img, (bpx, bpy), self.ball_dot_radius + 4, (0, 255, 255), 1, cv2.LINE_AA)
                 cv2.circle(radar_img, (bpx, bpy), self.ball_dot_radius + 2, (0, 0, 0), -1, cv2.LINE_AA)
                 cv2.circle(radar_img, (bpx, bpy), self.ball_dot_radius, (0, 60, 255), -1, cv2.LINE_AA)
                 cv2.circle(radar_img, (bpx, bpy), self.ball_dot_radius, (255, 255, 255), 1, cv2.LINE_AA)
@@ -144,14 +154,21 @@ class TacticalRadar:
             cv2.LINE_AA,
         )
 
-        # 6. Bottom Territory Dominance Bar
-        if tactical_spatial_result is not None:
+        # 6. Bottom Telemetry Bar: Space Control & Possession %
+        telemetry_str = ""
+        if possession_result is not None:
+            p_a = possession_result.team_a_possession_pct
+            p_b = possession_result.team_b_possession_pct
+            telemetry_str = f"POSS: A {p_a:.0f}% | B {p_b:.0f}%"
+        elif tactical_spatial_result is not None:
             pct_a = tactical_spatial_result.team_a_control_pct
             pct_b = tactical_spatial_result.team_b_control_pct
-            control_str = f"SPACE: A {pct_a:.0f}% | B {pct_b:.0f}%"
+            telemetry_str = f"SPACE: A {pct_a:.0f}% | B {pct_b:.0f}%"
+
+        if telemetry_str:
             cv2.putText(
                 radar_img,
-                control_str,
+                telemetry_str,
                 (self.radar_width - 145, self.radar_height - 6),
                 cv2.FONT_HERSHEY_DUPLEX,
                 0.28,

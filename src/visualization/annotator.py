@@ -1,8 +1,9 @@
-﻿"""
+"""
 Visual Annotation and HUD Overlay Module for Football Analysis (Polished & Hardened).
 Supports Rounded Bounding Boxes, Persistent Tracking IDs, Fading Motion Trails,
 Live Metric Speed (km/h), Role Badges [A]/[B]/[A-GK]/[B-GK]/[REF]/[COACH],
-Tactical Spatial Dominance %, Compactness (m²), and Top Telemetry HUD.
+Tactical Spatial Dominance %, Compactness (m²), Ball Trajectory Comet Trail,
+Possession Beacon Halo, and Top Telemetry HUD.
 """
 
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -37,7 +38,8 @@ def get_track_color(track_id: int) -> Tuple[int, int, int]:
 class VideoAnnotator:
     """
     Renders high-quality bounding boxes, persistent tracking IDs, movement trails,
-    metric speed indicators (km/h), role badges, pitch lines, and tactical HUD.
+    metric speed indicators (km/h), role badges, ball trajectory comet trails,
+    possession carrier beacons, pitch lines, and tactical HUD.
     """
 
     def __init__(
@@ -56,6 +58,8 @@ class VideoAnnotator:
         draw_team: bool = True,
         draw_pitch_boundary: bool = False,
         draw_pitch_lines: bool = False,
+        draw_ball_trail: bool = True,
+        draw_possession: bool = True,
         unique_track_colors: bool = False,
     ):
         self.player_color = player_color
@@ -73,6 +77,8 @@ class VideoAnnotator:
         self.draw_team = draw_team
         self.draw_pitch_boundary = draw_pitch_boundary
         self.draw_pitch_lines = draw_pitch_lines
+        self.draw_ball_trail = draw_ball_trail
+        self.draw_possession = draw_possession
         self.unique_track_colors = unique_track_colors
 
     def _draw_rounded_box(
@@ -192,12 +198,105 @@ class VideoAnnotator:
 
         return frame
 
+    def draw_ball_comet_trail(
+        self,
+        frame: np.ndarray,
+        ball_trail: Any,
+    ) -> np.ndarray:
+        """
+        Render dynamic luminous comet trail along the football's trajectory.
+        """
+        if not ball_trail or len(ball_trail) < 2:
+            return frame
+
+        trail_pts = list(ball_trail)
+        n = len(trail_pts)
+
+        for i in range(n - 1):
+            pt1 = (int(trail_pts[i][0]), int(trail_pts[i][1]))
+            pt2 = (int(trail_pts[i + 1][0]), int(trail_pts[i + 1][1]))
+            is_interp = trail_pts[i + 1][5] if len(trail_pts[i + 1]) > 5 else False
+
+            progress = (i + 1) / n
+            thickness = max(1, int(4.0 * progress))
+
+            if is_interp:
+                # Neon Cyan for interpolated segment
+                color = (255, 220, 0)
+            else:
+                # Vibrant Gold -> Hot Orange Comet
+                b = int(20 * (1 - progress))
+                g = int(140 + 80 * progress)
+                r = 255
+                color = (b, g, r)
+
+            cv2.line(frame, pt1, pt2, color, thickness, cv2.LINE_AA)
+
+        # Head of the comet
+        head_pt = (int(trail_pts[-1][0]), int(trail_pts[-1][1]))
+        cv2.circle(frame, head_pt, 5, (0, 255, 255), 1, cv2.LINE_AA)
+        cv2.circle(frame, head_pt, 2, (255, 255, 255), -1, cv2.LINE_AA)
+
+        return frame
+
+    def draw_possession_beacon(
+        self,
+        frame: np.ndarray,
+        detections: Any,
+        possession_result: Any,
+        team_result: Optional[Any] = None,
+    ) -> np.ndarray:
+        """
+        Render a distinctive glowing beacon halo above the active ball carrier.
+        """
+        if possession_result is None or possession_result.possessing_player_id is None:
+            return frame
+
+        carrier_id = possession_result.possessing_player_id
+        tracker_ids = getattr(detections, "tracker_ids", None)
+        if tracker_ids is None:
+            return frame
+
+        matches = np.where(tracker_ids == carrier_id)[0]
+        if len(matches) == 0:
+            return frame
+
+        match_idx = matches[0]
+        box = detections.xyxy[match_idx]
+        cx = int((box[0] + box[2]) / 2.0)
+        top_y = int(box[1])
+
+        # Team beacon color
+        beacon_color = (0, 215, 255)  # Gold
+        if team_result is not None and match_idx < len(team_result.team_colors):
+            beacon_color = team_result.team_colors[match_idx]
+
+        # Draw inverted glowing triangle chevron pointing to head
+        tri_h = 10
+        tri_w = 12
+        p1 = (cx, top_y - 6)
+        p2 = (cx - tri_w // 2, top_y - 6 - tri_h)
+        p3 = (cx + tri_w // 2, top_y - 6 - tri_h)
+        poly = np.array([p1, p2, p3], dtype=np.int32)
+
+        cv2.fillPoly(frame, [poly], beacon_color, cv2.LINE_AA)
+        cv2.polylines(frame, [poly], isClosed=True, color=(255, 255, 255), thickness=1, lineType=cv2.LINE_AA)
+
+        # Pulse halo around feet
+        foot_x = cx
+        foot_y = int(box[3])
+        cv2.circle(frame, (foot_x, foot_y), 14, beacon_color, 2, cv2.LINE_AA)
+        cv2.circle(frame, (foot_x, foot_y), 18, (255, 255, 255), 1, cv2.LINE_AA)
+
+        return frame
+
     def draw_detections(
         self,
         frame: np.ndarray,
         detections: Any,
         team_result: Optional[Any] = None,
         player_metrics: Optional[Dict[int, Any]] = None,
+        ball_state: Optional[Any] = None,
     ) -> np.ndarray:
         """
         Draw bounding boxes, persistent track IDs, role badges, metric speeds, and class badges.
@@ -268,6 +367,12 @@ class VideoAnnotator:
                 axis_h = max(2, int(axis_w / 2.5))
                 cv2.ellipse(annotated, (foot_x, foot_y), (axis_w, axis_h), 0, 0, 360, color, 1, cv2.LINE_AA)
 
+        # Draw interpolated ball if raw detection missed but Kalman predicted
+        if ball_state is not None and ball_state.is_interpolated and ball_state.box_xyxy is not None:
+            ibox = ball_state.box_xyxy
+            self._draw_rounded_box(annotated, ibox, (0, 215, 255), thickness=1)
+            self._draw_badge(annotated, "Ball [Tracked]", (int(ibox[0]), int(ibox[1]) - 4), (0, 165, 255))
+
         return annotated
 
     def draw_hud(
@@ -283,6 +388,7 @@ class VideoAnnotator:
         team_counts: Optional[Dict[str, int]] = None,
         tactical_spatial_result: Optional[Any] = None,
         team_summary: Optional[Dict[str, float]] = None,
+        possession_result: Optional[Any] = None,
         device_name: str = "GPU",
     ) -> np.ndarray:
         """
@@ -306,28 +412,41 @@ class VideoAnnotator:
 
         pct_a = tactical_spatial_result.team_a_control_pct if tactical_spatial_result else 50.0
         pct_b = tactical_spatial_result.team_b_control_pct if tactical_spatial_result else 50.0
-        area_a = tactical_spatial_result.team_a_area_m2 if tactical_spatial_result else 0.0
+
+        # Possession breakdown
+        poss_str = ""
+        carrier_str = ""
+        if possession_result is not None:
+            p_pct_a = possession_result.team_a_possession_pct
+            p_pct_b = possession_result.team_b_possession_pct
+            poss_str = f"POSS: A {p_pct_a:.0f}% | B {p_pct_b:.0f}%"
+            if possession_result.possessing_player_id is not None:
+                carrier_str = f"CARRIER: #{possession_result.possessing_player_id}"
+            elif possession_result.is_contested:
+                carrier_str = "BALL: 50-50 DUEL"
+            else:
+                carrier_str = "BALL: FREE"
 
         hud_items = [
             f"FRAME: {frame_idx:04d}/{total_frames:04d}",
             f"DEVICE: {device_name}",
             f"SPEED: {fps:.1f} FPS",
-            f"TEAM A ({pct_a:.0f}%): {cnt_a:02d} | TEAM B ({pct_b:.0f}%): {cnt_b:02d}" if (cnt_a + cnt_b > 0) else f"PLAYERS: {num_players:02d}",
-            f"COMPACT: {area_a:.0f} m²" if area_a > 0 else (f"MAX SPRINT: {max_speed:.1f} KM/H" if max_speed > 0 else "PITCH: LOCKED"),
-            f"TOT DIST: {tot_dist:.2f} KM" if tot_dist > 0 else f"BALL: {'FOUND' if ball_detected else 'SEARCHING'}",
+            f"TEAM A: {cnt_a:02d} | TEAM B: {cnt_b:02d}" if (cnt_a + cnt_b > 0) else f"PLAYERS: {num_players:02d}",
+            poss_str if poss_str else (f"SPACE: A {pct_a:.0f}% | B {pct_b:.0f}%"),
+            carrier_str if carrier_str else (f"MAX SPRINT: {max_speed:.1f} KM/H" if max_speed > 0 else "PITCH: LOCKED"),
         ]
 
         section_width = w // len(hud_items)
         for idx, text in enumerate(hud_items):
             x = idx * section_width + 12
             y = 30
-            if "BALL" in text or "SPRINT" in text:
+            if "BALL" in text or "CARRIER" in text or "SPRINT" in text:
                 dot_color = (0, 255, 128)
                 cv2.circle(frame, (x - 6, y - 6), 4, dot_color, -1, cv2.LINE_AA)
-            elif "PITCH" in text or "COMPACT" in text:
+            elif "PITCH" in text or "SPACE" in text:
                 dot_color = (0, 255, 128) if pitch_detected else (80, 80, 200)
                 cv2.circle(frame, (x - 6, y - 6), 4, dot_color, -1, cv2.LINE_AA)
-            elif "TEAM" in text or "DIST" in text:
+            elif "TEAM" in text or "POSS" in text or "DIST" in text:
                 cv2.circle(frame, (x - 6, y - 6), 4, (0, 215, 255), -1, cv2.LINE_AA)
 
             cv2.putText(
@@ -335,7 +454,7 @@ class VideoAnnotator:
                 text,
                 (x + 4, y),
                 self.font,
-                0.44,
+                0.42,
                 (240, 240, 240),
                 1,
                 cv2.LINE_AA,
@@ -352,20 +471,39 @@ class VideoAnnotator:
         tactical_spatial_result: Optional[Any] = None,
         player_metrics: Optional[Dict[int, Any]] = None,
         team_summary: Optional[Dict[str, float]] = None,
+        ball_state: Optional[Any] = None,
+        possession_result: Optional[Any] = None,
+        ball_trail: Optional[Any] = None,
         fps: float = 0.0,
         frame_idx: int = 0,
         total_frames: int = 0,
         device_name: str = "GPU",
     ) -> np.ndarray:
         """
-        Complete annotation pipeline combining pitch lines, role badges, speed indicators, spatial metrics, and HUD.
+        Complete annotation pipeline combining pitch lines, role badges, speed indicators,
+        ball comet trails, possession beacons, spatial metrics, and HUD.
         """
         annotated = self.draw_pitch(frame, pitch_result)
-        annotated = self.draw_detections(annotated, detections, team_result=team_result, player_metrics=player_metrics)
+        annotated = self.draw_detections(
+            annotated,
+            detections,
+            team_result=team_result,
+            player_metrics=player_metrics,
+            ball_state=ball_state,
+        )
+
+        if self.draw_ball_trail and ball_trail:
+            annotated = self.draw_ball_comet_trail(annotated, ball_trail)
+
+        if self.draw_possession and possession_result:
+            annotated = self.draw_possession_beacon(annotated, detections, possession_result, team_result=team_result)
 
         if self.enable_hud:
             num_players = len(detections.get_players().xyxy) if hasattr(detections, "get_players") else 0
-            ball_detected = len(detections.get_ball().xyxy) > 0 if hasattr(detections, "get_ball") else False
+            ball_detected = (
+                (len(detections.get_ball().xyxy) > 0)
+                or (ball_state is not None and not ball_state.is_interpolated)
+            )
             
             tracker_ids = getattr(detections, "tracker_ids", None)
             active_tracks = len(np.unique(tracker_ids[tracker_ids >= 0])) if tracker_ids is not None else 0
@@ -387,6 +525,7 @@ class VideoAnnotator:
                 team_counts=team_result.team_counts if team_result else None,
                 tactical_spatial_result=tactical_spatial_result,
                 team_summary=team_summary,
+                possession_result=possession_result,
                 device_name=device_name,
             )
 
