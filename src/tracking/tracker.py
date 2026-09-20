@@ -1,12 +1,13 @@
-﻿"""
-Multi-Object Tracking Module for Football Analysis (Milestone 2 & Kalman Enhancements).
-Uses ByteTrack with Kalman Filter motion prediction, center extrapolation coasting,
-and automated memory reclamation.
+"""
+Multi-Object Tracking Module for Football Analysis (Milestone 2, Kalman & Milestone 9 CMC).
+Uses ByteTrack with Kalman Filter motion prediction, Camera Motion Compensation (CMC),
+center extrapolation coasting, and automated memory reclamation.
 """
 
 from collections import defaultdict, deque
 from typing import Dict, List, Optional, Tuple, Union
 import warnings
+import cv2
 import numpy as np
 import supervision as sv
 from supervision import ByteTrack, Detections
@@ -20,7 +21,8 @@ TrackResult = DetectionResult
 class PlayerTracker:
     """
     ByteTrack-based Multi-Object Tracker with Kalman Filter motion prediction,
-    lost-track coasting (interpolation across dropouts), and historical movement trails.
+    Camera Motion Compensation (CMC), lost-track coasting (interpolation across dropouts),
+    and historical movement trails.
     """
 
     def __init__(
@@ -53,10 +55,46 @@ class PlayerTracker:
         self.last_velocities: Dict[int, np.ndarray] = {}
         self.lost_counters: Dict[int, int] = {}
 
-    def update(self, detection_result: DetectionResult) -> DetectionResult:
+    def _apply_camera_motion_compensation(self, camera_transform: np.ndarray):
         """
-        Update tracker with detections and emit persistent track IDs with Kalman coasting.
+        Warp cached previous boxes and velocities by the affine camera transformation
+        matrix M_{t-1 -> t} to align them with the current camera coordinate frame.
         """
+        if camera_transform is None or not np.isfinite(camera_transform).all():
+            return
+
+        M = camera_transform[:2, :]
+
+        # Warp last known bounding boxes
+        for tid, box in list(self.last_boxes.items()):
+            corners = np.array([
+                [box[0], box[1]],
+                [box[2], box[1]],
+                [box[2], box[3]],
+                [box[0], box[3]],
+            ], dtype=np.float32).reshape(-1, 1, 2)
+
+            warped = cv2.transform(corners, M).reshape(-1, 2)
+            self.last_boxes[tid] = np.array([
+                np.min(warped[:, 0]),
+                np.min(warped[:, 1]),
+                np.max(warped[:, 0]),
+                np.max(warped[:, 1]),
+            ], dtype=np.float32)
+
+    def update(
+        self,
+        detection_result: DetectionResult,
+        camera_transform: Optional[np.ndarray] = None,
+    ) -> DetectionResult:
+        """
+        Update tracker with detections, perform Camera Motion Compensation (CMC),
+        and emit persistent track IDs with Kalman coasting.
+        """
+        # Apply Camera Motion Compensation before processing current frame
+        if camera_transform is not None:
+            self._apply_camera_motion_compensation(camera_transform)
+
         if len(detection_result.xyxy) == 0:
             return detection_result
 

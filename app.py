@@ -25,6 +25,7 @@ import numpy as np
 
 from src.analytics.speed_distance import SpeedEstimator
 from src.calibration.homography import PitchHomography
+from src.calibration.camera_motion import CameraMotionCompensator
 from src.detection.detector import PlayerDetector
 from src.pitch.detector import PitchDetector
 from src.preprocessing.preprocessor import FramePreprocessor
@@ -81,6 +82,7 @@ def run_pipeline_task(task_id: str, payload: dict):
         # Initialize AI Modules
         preprocessor = FramePreprocessor(enable_clahe=enable_clahe) if enable_clahe else None
         detector = PlayerDetector(model_name="models/yolov8m.pt", device=preferred_device, conf_threshold=0.18, imgsz=1280)
+        camera_compensator = CameraMotionCompensator()
         pitch_detector = PitchDetector()
         tracker = PlayerTracker(frame_rate=int(fps))
         ball_tracker = BallTracker(fps=fps)
@@ -105,6 +107,7 @@ def run_pipeline_task(task_id: str, payload: dict):
             draw_pitch_lines=True,
             draw_ball_trail=True,
             draw_possession=True,
+            draw_camera_motion=True,
         )
 
         out_name = f"output_{Path(source_path).stem}.mp4"
@@ -133,8 +136,11 @@ def run_pipeline_task(task_id: str, payload: dict):
             detections = detector.detect(proc_frame, frame_idx=frame_idx)
             filtered = pitch_detector.filter_detections_on_pitch(detections, pitch_res.mask)
 
-            # Tracking
-            tracked = tracker.update(filtered)
+            # Camera Motion Estimation (GME)
+            camera_motion = camera_compensator.estimate_motion(proc_frame, detections=detections, frame_idx=frame_idx)
+
+            # Tracking with CMC
+            tracked = tracker.update(filtered, camera_transform=camera_motion.transform_matrix)
             players = tracked.get_players()
             num_players = len(players.xyxy)
             player_counts.append(num_players)
@@ -187,6 +193,7 @@ def run_pipeline_task(task_id: str, payload: dict):
                 player_metrics=player_metrics,
                 ball_state=ball_state,
                 possession_result=possession_res,
+                camera_motion=camera_motion,
                 ball_trail=ball_tracker.trail,
                 fps=round(1.0 / max(0.001, time.time() - t_frame_start), 1),
                 frame_idx=frame_idx + 1,

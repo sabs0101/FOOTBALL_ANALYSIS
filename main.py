@@ -1,6 +1,6 @@
 """
 AI-Based Football Broadcast Analysis and Tactical Reconstruction
-Pipeline Runner: Detection + Tracking + Pitch + Homography + Speed + Team ID + Tactics + Ball Tracking & Possession
+Pipeline Runner: Detection + Tracking + CMC Camera Compensation + Pitch + Homography + Speed + Team ID + Tactics + Ball Tracking & Possession
 """
 
 import argparse
@@ -17,6 +17,7 @@ from src.preprocessing.preprocessor import FramePreprocessor
 from src.analytics.speed_distance import SpeedEstimator
 from src.calibration.homography import PitchHomography
 from src.calibration.template import PitchTemplate
+from src.calibration.camera_motion import CameraMotionCompensator, CameraMotionResult
 from src.detection.detector import PlayerDetector
 from src.pitch.detector import PitchDetector
 from src.tactics.heatmaps import HeatmapGenerator
@@ -117,6 +118,11 @@ def parse_args() -> argparse.Namespace:
         help="Disable Kalman ball tracking, interpolation, and possession assignment",
     )
     parser.add_argument(
+        "--no-cmc",
+        action="store_true",
+        help="Disable Camera Motion Compensation (GME)",
+    )
+    parser.add_argument(
         "--draw-pitch-lines",
         action="store_true",
         help="Highlight detected pitch field markings in the video",
@@ -154,13 +160,14 @@ def run_pipeline(
     enable_speed: bool = True,
     enable_tactics: bool = True,
     enable_ball_tracking: bool = True,
+    enable_cmc: bool = True,
     draw_pitch_lines: bool = False,
     draw_pitch_boundary: bool = False,
     draw_trails: bool = True,
     draw_hud: bool = True,
 ) -> Dict[str, Any]:
     """
-    Execute end-to-end tactical analysis with Kalman Ball Tracking, Trajectory Smoothing,
+    Execute end-to-end tactical analysis with Camera Motion Compensation, Kalman Ball Tracking,
     and Player Possession Assignment.
     """
     config = load_config(config_path)
@@ -187,7 +194,7 @@ def run_pipeline(
 
     props = get_video_properties(str(source))
     print(f"\n=======================================================")
-    print(f" AI Football Analysis - Tactical Pipeline (Milestone 8)")
+    print(f" AI Football Analysis - Tactical Pipeline (Milestone 9)")
     print(f"=======================================================")
     print(f" Source Video       : {source.name}")
     print(f" Resolution         : {props['width']}x{props['height']}")
@@ -195,6 +202,7 @@ def run_pipeline(
     print(f" Original FPS       : {props['fps']:.2f}")
     print(f" Output Video       : {output_path}")
     print(f" Model              : {model_name} (conf={conf_threshold}, imgsz={imgsz})")
+    print(f" Camera Motion (CMC): {'Enabled (GME & PTZ Telemetry)' if enable_cmc else 'Disabled'}")
     print(f" Team Classification: {'Enabled (GK & Coach Refined)' if enable_team else 'Disabled'}")
     print(f" Tactical Space/Hull: {'Enabled (Voronoi & Convex Hulls)' if enable_tactics else 'Disabled'}")
     print(f" Ball & Possession  : {'Enabled (Kalman Smoothing & Possession)' if enable_ball_tracking else 'Disabled'}")
@@ -226,7 +234,12 @@ def run_pipeline(
         filter_classes=filter_classes,
     )
 
-    # 2. Pitch Detector
+    # 2. Camera Motion Compensator (Milestone 9)
+    camera_compensator = None
+    if enable_cmc:
+        camera_compensator = CameraMotionCompensator()
+
+    # 3. Pitch Detector
     pitch_cfg = config.get("pitch", {})
     pitch_detector = PitchDetector(
         hsv_green_lower=tuple(pitch_cfg.get("hsv_green_lower", [32, 45, 40])),
@@ -238,7 +251,7 @@ def run_pipeline(
         max_line_gap=pitch_cfg.get("max_line_gap", 40),
     )
 
-    # 3. Tracker
+    # 4. Tracker
     tracker = None
     if enable_tracking:
         track_cfg = config.get("tracking", {})
@@ -250,7 +263,7 @@ def run_pipeline(
             trail_length=track_cfg.get("trail_length", 20),
         )
 
-    # 4. Ball Tracker & Possession Engine
+    # 5. Ball Tracker & Possession Engine
     ball_tracker = None
     if enable_ball_tracking:
         ball_tracker = BallTracker(
@@ -262,7 +275,7 @@ def run_pipeline(
             hysteresis_frames=2,
         )
 
-    # 5. Team Classifier
+    # 6. Team Classifier
     team_classifier = None
     if enable_team:
         team_cfg = config.get("team", {})
@@ -272,7 +285,7 @@ def run_pipeline(
             referee_dist_threshold=team_cfg.get("referee_dist_threshold", 85.0),
         )
 
-    # 6. Homography & 2D Radar
+    # 7. Homography & 2D Radar
     calibrator = PitchHomography()
     radar_cfg = config.get("radar", {})
     tactical_radar = None
@@ -284,7 +297,7 @@ def run_pipeline(
             ball_dot_radius=radar_cfg.get("ball_dot_radius", 5),
         )
 
-    # 7. Speed Estimator
+    # 8. Speed Estimator
     speed_estimator = None
     if enable_speed:
         analytics_cfg = config.get("analytics", {})
@@ -295,14 +308,14 @@ def run_pipeline(
             min_speed_kmh=analytics_cfg.get("min_speed_threshold_kmh", 2.5),
         )
 
-    # 8. Tactical Spatial Control & Heatmaps
+    # 9. Tactical Spatial Control & Heatmaps
     spatial_control = None
     heatmap_gen = None
     if enable_tactics:
         spatial_control = SpatialControl()
         heatmap_gen = HeatmapGenerator()
 
-    # 9. Annotator
+    # 10. Annotator
     annotator = VideoAnnotator(
         box_thickness=config["visualization"]["box_thickness"],
         font_scale=config["visualization"]["text_scale"],
@@ -316,6 +329,7 @@ def run_pipeline(
         draw_pitch_lines=draw_pitch_lines or config["visualization"].get("draw_pitch_lines", False),
         draw_ball_trail=enable_ball_tracking,
         draw_possession=enable_ball_tracking,
+        draw_camera_motion=enable_cmc,
     )
 
     # Video IO
@@ -337,6 +351,7 @@ def run_pipeline(
     pitch_detected_count = 0
     avg_team_a_control = []
     avg_team_b_control = []
+    pan_events = {"PAN RIGHT": 0, "PAN LEFT": 0, "STATIC": 0}
     last_possession_result: Optional[PossessionResult] = None
 
     print(f"[Processing] Running Master Tactical Pipeline across {total_frames} frames...")
@@ -360,9 +375,21 @@ def run_pipeline(
             if enable_pitch_filter and pitch_result.pitch_area_ratio >= 0.20:
                 detections = pitch_detector.filter_detections_on_pitch(detections, pitch_result.mask)
 
-            # Step 4: Multi-Object Tracking (ByteTrack)
+            # Step 4: Camera Motion Estimation (GME)
+            camera_motion = None
+            camera_transform = None
+            if camera_compensator is not None:
+                camera_motion = camera_compensator.estimate_motion(
+                    proc_frame,
+                    detections=detections,
+                    frame_idx=frame_idx,
+                )
+                camera_transform = camera_motion.transform_matrix
+                pan_events[camera_motion.pan_direction] = pan_events.get(camera_motion.pan_direction, 0) + 1
+
+            # Step 5: Multi-Object Tracking (ByteTrack + CMC)
             if tracker is not None:
-                processed_results = tracker.update(detections)
+                processed_results = tracker.update(detections, camera_transform=camera_transform)
                 for tid in processed_results.tracker_ids:
                     if tid >= 0:
                         unique_track_ids.add(int(tid))
@@ -378,7 +405,7 @@ def run_pipeline(
             if has_ball:
                 ball_detected_count += 1
 
-            # Step 5: Homography & Metric Coordinates Calculation
+            # Step 6: Homography & Metric Coordinates Calculation
             player_positions_m = np.empty((0, 2), dtype=np.float32)
             ball_pos_m = None
             H_matrix = None
@@ -404,7 +431,7 @@ def run_pipeline(
                         if len(ball_m) > 0:
                             ball_pos_m = (float(ball_m[0, 0]), float(ball_m[0, 1]))
 
-            # Step 6: Team, Goalkeeper, Referee, and Coach Classification
+            # Step 7: Team, Goalkeeper, Referee, and Coach Classification
             team_result = None
             player_team_ids = None
             if team_classifier is not None:
@@ -417,7 +444,7 @@ def run_pipeline(
                     player_indices = np.where(processed_results.class_ids == 0)[0]
                     player_team_ids = team_result.team_ids[player_indices] if len(player_indices) > 0 else np.empty((0,), dtype=int)
 
-            # Step 7: Kalman Ball Tracking, Gap Interpolation & Player Possession Assignment
+            # Step 8: Kalman Ball Tracking, Gap Interpolation & Player Possession Assignment
             ball_state = None
             possession_result = None
             if ball_tracker is not None:
@@ -433,7 +460,7 @@ def run_pipeline(
                     ball_pos_m = ball_state.position_m
                 last_possession_result = possession_result
 
-            # Step 8: Speed & Distance Estimation
+            # Step 9: Speed & Distance Estimation
             player_metrics = {}
             team_summary = {}
             if speed_estimator is not None and len(player_positions_m) > 0:
@@ -444,7 +471,7 @@ def run_pipeline(
                 )
                 team_summary = speed_estimator.get_team_summary()
 
-            # Step 9: Tactical Spatial Control & Heatmaps
+            # Step 10: Tactical Spatial Control & Heatmaps
             tactical_spatial_result = None
             if spatial_control is not None and team_result is not None and len(player_positions_m) > 0:
                 if player_team_ids is not None and len(player_team_ids) == len(player_positions_m):
@@ -467,7 +494,7 @@ def run_pipeline(
             frame_times.append(dt)
             fps_inst = 1.0 / dt if dt > 0 else 0.0
 
-            # Step 10: Visual Annotation & Telemetry HUD
+            # Step 11: Visual Annotation & Telemetry HUD
             annotated_frame = annotator.annotate(
                 frame=frame,
                 detections=processed_results,
@@ -478,6 +505,7 @@ def run_pipeline(
                 team_summary=team_summary,
                 ball_state=ball_state,
                 possession_result=possession_result,
+                camera_motion=camera_motion,
                 ball_trail=ball_tracker.trail if ball_tracker is not None else None,
                 fps=fps_inst,
                 frame_idx=frame_idx + 1,
@@ -485,7 +513,7 @@ def run_pipeline(
                 device_name=device_label,
             )
 
-            # Step 11: 2D Tactical Radar Minimap Overlay
+            # Step 12: 2D Tactical Radar Minimap Overlay
             if tactical_radar is not None and len(player_positions_m) > 0:
                 player_team_colors = None
                 if team_result is not None:
@@ -513,7 +541,7 @@ def run_pipeline(
         reader.release()
         writer.release()
 
-    # Step 12: Export Tactical Positional Heatmaps
+    # Step 13: Export Tactical Positional Heatmaps
     if heatmap_gen is not None:
         heatmap_dir = config.get("tactics", {}).get("heatmap_output_dir", "outputs/heatmaps")
         heatmap_gen.export_all_heatmaps(heatmap_dir)
@@ -542,12 +570,13 @@ def run_pipeline(
         }
 
     print(f"\n=======================================================")
-    print(f" Processing Complete (Milestone 8)!")
+    print(f" Processing Complete (Milestone 9)!")
     print(f"=======================================================")
     print(f" Total Elapsed Time     : {total_time:.2f} seconds")
     print(f" Average Speed          : {avg_fps:.2f} FPS")
     print(f" Avg On-Pitch Players   : {avg_players:.1f}")
     print(f" Pitch Locked           : {pitch_detected_count}/{total_frames} frames ({pitch_detected_count/max(1,total_frames)*100:.1f}%)")
+    print(f" Camera Motion Events   : {pan_events.get('PAN RIGHT', 0)} Pan Right, {pan_events.get('PAN LEFT', 0)} Pan Left, {pan_events.get('STATIC', 0)} Static")
     print(f" Team A Space Dominance : {mean_ctrl_a:.1f}% pitch space control")
     print(f" Team B Space Dominance : {mean_ctrl_b:.1f}% pitch space control")
     if poss_summary:
@@ -562,7 +591,7 @@ def run_pipeline(
     print(f" Ball Detected In       : {ball_detected_count}/{total_frames} frames ({ball_detected_count/max(1,total_frames)*100:.1f}%)")
     print(f" Output Video           : {output_path}")
     print(f" Heatmaps Saved To      : outputs/heatmaps/")
-    print(f"=======================================================\n")
+    print(f"=======================================================")
 
     log_dir = Path(config["paths"]["log_dir"])
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -572,6 +601,8 @@ def run_pipeline(
         "model": model_name,
         "imgsz": imgsz,
         "device": device_label,
+        "camera_motion_compensation_enabled": enable_cmc,
+        "camera_pan_events": pan_events,
         "team_classification_enabled": enable_team,
         "tactical_space_control_enabled": enable_tactics,
         "ball_possession_summary": poss_summary,
@@ -611,6 +642,7 @@ if __name__ == "__main__":
         enable_speed=not args.no_speed,
         enable_tactics=not args.no_tactics,
         enable_ball_tracking=not args.no_ball_track,
+        enable_cmc=not args.no_cmc,
         draw_pitch_lines=args.draw_pitch_lines,
         draw_pitch_boundary=args.draw_pitch_boundary,
         draw_trails=not args.no_trails,

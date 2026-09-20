@@ -97,10 +97,6 @@ runs/
 Thumbs.db
 desktop.ini
 
-# Local notes & Progress Tracking
-PROJECT_PROGRESS.md
-progress.md
-PROGRESS.md
-*progress*.md
+# Local notes & logs
 *.log
 scratch/

@@ -3,7 +3,7 @@ Visual Annotation and HUD Overlay Module for Football Analysis (Polished & Harde
 Supports Rounded Bounding Boxes, Persistent Tracking IDs, Fading Motion Trails,
 Live Metric Speed (km/h), Role Badges [A]/[B]/[A-GK]/[B-GK]/[REF]/[COACH],
 Tactical Spatial Dominance %, Compactness (m²), Ball Trajectory Comet Trail,
-Possession Beacon Halo, and Top Telemetry HUD.
+Possession Beacon Halo, Camera Kinematics (PTZ) Telemetry, and Top Telemetry HUD.
 """
 
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -39,7 +39,7 @@ class VideoAnnotator:
     """
     Renders high-quality bounding boxes, persistent tracking IDs, movement trails,
     metric speed indicators (km/h), role badges, ball trajectory comet trails,
-    possession carrier beacons, pitch lines, and tactical HUD.
+    possession carrier beacons, camera motion telemetry, pitch lines, and tactical HUD.
     """
 
     def __init__(
@@ -60,6 +60,7 @@ class VideoAnnotator:
         draw_pitch_lines: bool = False,
         draw_ball_trail: bool = True,
         draw_possession: bool = True,
+        draw_camera_motion: bool = True,
         unique_track_colors: bool = False,
     ):
         self.player_color = player_color
@@ -79,6 +80,7 @@ class VideoAnnotator:
         self.draw_pitch_lines = draw_pitch_lines
         self.draw_ball_trail = draw_ball_trail
         self.draw_possession = draw_possession
+        self.draw_camera_motion = draw_camera_motion
         self.unique_track_colors = unique_track_colors
 
     def _draw_rounded_box(
@@ -221,10 +223,8 @@ class VideoAnnotator:
             thickness = max(1, int(4.0 * progress))
 
             if is_interp:
-                # Neon Cyan for interpolated segment
                 color = (255, 220, 0)
             else:
-                # Vibrant Gold -> Hot Orange Comet
                 b = int(20 * (1 - progress))
                 g = int(140 + 80 * progress)
                 r = 255
@@ -389,6 +389,7 @@ class VideoAnnotator:
         tactical_spatial_result: Optional[Any] = None,
         team_summary: Optional[Dict[str, float]] = None,
         possession_result: Optional[Any] = None,
+        camera_motion: Optional[Any] = None,
         device_name: str = "GPU",
     ) -> np.ndarray:
         """
@@ -404,14 +405,8 @@ class VideoAnnotator:
 
         cv2.line(frame, (0, hud_height), (w, hud_height), (0, 215, 255), 2, cv2.LINE_AA)
 
-        max_speed = team_summary.get("max_speed_kmh", 0.0) if team_summary else 0.0
-        tot_dist = team_summary.get("total_distance_km", 0.0) if team_summary else 0.0
-
         cnt_a = team_counts.get("Team A", 0) if team_counts else 0
         cnt_b = team_counts.get("Team B", 0) if team_counts else 0
-
-        pct_a = tactical_spatial_result.team_a_control_pct if tactical_spatial_result else 50.0
-        pct_b = tactical_spatial_result.team_b_control_pct if tactical_spatial_result else 50.0
 
         # Possession breakdown
         poss_str = ""
@@ -427,34 +422,48 @@ class VideoAnnotator:
             else:
                 carrier_str = "BALL: FREE"
 
+        # Camera Motion breakdown (Milestone 9)
+        cam_str = "CAM: LOCKED"
+        if camera_motion is not None and self.draw_camera_motion:
+            pan = camera_motion.pan_direction
+            zoom = camera_motion.zoom_factor
+            dx = camera_motion.dx_pixels
+            if pan != "STATIC":
+                cam_str = f"CAM: {pan} ({dx:+.0f}px)"
+            elif camera_motion.zoom_state != "STEADY":
+                cam_str = f"CAM: {camera_motion.zoom_state} ({zoom:.2f}x)"
+            else:
+                cam_str = f"CAM: STABLE ({zoom:.2f}x)"
+
         hud_items = [
             f"FRAME: {frame_idx:04d}/{total_frames:04d}",
             f"DEVICE: {device_name}",
             f"SPEED: {fps:.1f} FPS",
             f"TEAM A: {cnt_a:02d} | TEAM B: {cnt_b:02d}" if (cnt_a + cnt_b > 0) else f"PLAYERS: {num_players:02d}",
-            poss_str if poss_str else (f"SPACE: A {pct_a:.0f}% | B {pct_b:.0f}%"),
-            carrier_str if carrier_str else (f"MAX SPRINT: {max_speed:.1f} KM/H" if max_speed > 0 else "PITCH: LOCKED"),
+            poss_str if poss_str else "SPACE: BALANCED",
+            carrier_str if carrier_str else "BALL: TRACKED",
+            cam_str,
         ]
 
         section_width = w // len(hud_items)
         for idx, text in enumerate(hud_items):
-            x = idx * section_width + 12
+            x = idx * section_width + 8
             y = 30
-            if "BALL" in text or "CARRIER" in text or "SPRINT" in text:
+            if "BALL" in text or "CARRIER" in text:
                 dot_color = (0, 255, 128)
-                cv2.circle(frame, (x - 6, y - 6), 4, dot_color, -1, cv2.LINE_AA)
-            elif "PITCH" in text or "SPACE" in text:
-                dot_color = (0, 255, 128) if pitch_detected else (80, 80, 200)
-                cv2.circle(frame, (x - 6, y - 6), 4, dot_color, -1, cv2.LINE_AA)
-            elif "TEAM" in text or "POSS" in text or "DIST" in text:
-                cv2.circle(frame, (x - 6, y - 6), 4, (0, 215, 255), -1, cv2.LINE_AA)
+                cv2.circle(frame, (x - 4, y - 6), 4, dot_color, -1, cv2.LINE_AA)
+            elif "CAM" in text:
+                dot_color = (0, 215, 255) if "STABLE" in text or "LOCKED" in text else (255, 180, 0)
+                cv2.circle(frame, (x - 4, y - 6), 4, dot_color, -1, cv2.LINE_AA)
+            elif "TEAM" in text or "POSS" in text:
+                cv2.circle(frame, (x - 4, y - 6), 4, (0, 215, 255), -1, cv2.LINE_AA)
 
             cv2.putText(
                 frame,
                 text,
-                (x + 4, y),
+                (x + 5, y),
                 self.font,
-                0.42,
+                0.38,
                 (240, 240, 240),
                 1,
                 cv2.LINE_AA,
@@ -473,6 +482,7 @@ class VideoAnnotator:
         team_summary: Optional[Dict[str, float]] = None,
         ball_state: Optional[Any] = None,
         possession_result: Optional[Any] = None,
+        camera_motion: Optional[Any] = None,
         ball_trail: Optional[Any] = None,
         fps: float = 0.0,
         frame_idx: int = 0,
@@ -481,7 +491,7 @@ class VideoAnnotator:
     ) -> np.ndarray:
         """
         Complete annotation pipeline combining pitch lines, role badges, speed indicators,
-        ball comet trails, possession beacons, spatial metrics, and HUD.
+        ball comet trails, possession beacons, camera motion telemetry, spatial metrics, and HUD.
         """
         annotated = self.draw_pitch(frame, pitch_result)
         annotated = self.draw_detections(
@@ -526,6 +536,7 @@ class VideoAnnotator:
                 tactical_spatial_result=tactical_spatial_result,
                 team_summary=team_summary,
                 possession_result=possession_result,
+                camera_motion=camera_motion,
                 device_name=device_name,
             )
 
