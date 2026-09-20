@@ -60,6 +60,9 @@ def run_pipeline_task(task_id: str, payload: dict):
         enable_speed = payload.get("speed", True)
         enable_tactics = payload.get("tactics", True)
         enable_heatmaps = payload.get("heatmaps", True)
+        enable_cmc = payload.get("cmc", True)
+        enable_reid = payload.get("reid", True)
+        enable_events = payload.get("events", True)
         enable_clahe = payload.get("clahe", True)
 
         config = load_config("config.yaml")
@@ -158,9 +161,9 @@ def run_pipeline_task(task_id: str, payload: dict):
             # Tracking with CMC and Cut-Aware Re-ID
             tracked = tracker.update(
                 filtered,
-                camera_transform=camera_motion.transform_matrix,
-                is_cut=cut_res.is_cut,
-                reid=reid,
+                camera_transform=camera_motion.transform_matrix if enable_cmc else None,
+                is_cut=cut_res.is_cut if enable_reid else False,
+                reid=reid if enable_reid else None,
                 frame=frame,
             )
             players = tracked.get_players()
@@ -205,14 +208,15 @@ def run_pipeline_task(task_id: str, payload: dict):
             last_possession = possession_res
 
             # Discrete Match Event Recognition (Milestone 11)
-            event_detector.update(
-                ball_state=ball_state,
-                possession_result=possession_res,
-                player_positions_m=pos_m if len(pos_m) > 0 else None,
-                player_track_ids=players.tracker_ids if hasattr(players, "tracker_ids") else None,
-                player_team_ids=player_team_ids,
-                frame_idx=frame_idx,
-            )
+            if enable_events:
+                event_detector.update(
+                    ball_state=ball_state,
+                    possession_result=possession_res,
+                    player_positions_m=pos_m if len(pos_m) > 0 else None,
+                    player_track_ids=players.tracker_ids if hasattr(players, "tracker_ids") else None,
+                    player_team_ids=player_team_ids,
+                    frame_idx=frame_idx,
+                )
 
             ball_m = ball_state.position_m if ball_state is not None else None
 
@@ -225,10 +229,10 @@ def run_pipeline_task(task_id: str, payload: dict):
                 player_metrics=player_metrics,
                 ball_state=ball_state,
                 possession_result=possession_res,
-                camera_motion=camera_motion,
-                cut_result=cut_res,
-                reid_count=reid.total_reassignments,
-                active_event=event_detector.active_event,
+                camera_motion=camera_motion if enable_cmc else None,
+                cut_result=cut_res if enable_reid else None,
+                reid_count=reid.total_reassignments if enable_reid else 0,
+                active_event=event_detector.active_event if enable_events else None,
                 ball_trail=ball_tracker.trail,
                 fps=round(1.0 / max(0.001, time.time() - t_frame_start), 1),
                 frame_idx=frame_idx + 1,
@@ -242,7 +246,7 @@ def run_pipeline_task(task_id: str, payload: dict):
                 radar_img = tactical_radar.render_radar(
                     player_positions_m=pos_m,
                     player_track_ids=players.tracker_ids if hasattr(players, "tracker_ids") else None,
-                    ball_position_m=ball_pos_m,
+                    ball_position_m=ball_m,
                     team_colors=player_team_colors,
                     tactical_spatial_result=spatial_res,
                     possession_result=possession_res,
@@ -276,6 +280,22 @@ def run_pipeline_task(task_id: str, payload: dict):
 
         ev_sum = event_detector.get_summary()
 
+        events_json_path = f"outputs/logs/{Path(source_path).stem}_match_events.json"
+        Path("outputs/logs").mkdir(parents=True, exist_ok=True)
+        with open(events_json_path, "w") as f:
+            json.dump({
+                "total_events": ev_sum.total_events,
+                "team_a_passes": f"{ev_sum.completed_passes_a}/{ev_sum.total_passes_a} ({ev_sum.pass_accuracy_a_pct}%)",
+                "team_b_passes": f"{ev_sum.completed_passes_b}/{ev_sum.total_passes_b} ({ev_sum.pass_accuracy_b_pct}%)",
+                "team_a_shots": ev_sum.total_shots_a,
+                "team_b_shots": ev_sum.total_shots_b,
+                "team_a_interceptions": ev_sum.total_interceptions_a,
+                "team_b_interceptions": ev_sum.total_interceptions_b,
+                "team_a_tackles": ev_sum.total_tackles_a,
+                "team_b_tackles": ev_sum.total_tackles_b,
+                "timeline": ev_sum.events_timeline,
+            }, f, indent=2)
+
         final_results = {
             "output_video": out_video_path,
             "total_frames": total_frames,
@@ -284,7 +304,7 @@ def run_pipeline_task(task_id: str, payload: dict):
             "top_player_id": top_carrier,
             "camera_cuts": len(cut_frames),
             "cut_frames": cut_frames,
-            "reid_reassignments": reid.total_reassignments,
+            "reid_reassignments": reid.total_reassignments if enable_reid else 0,
             "total_events": ev_sum.total_events,
             "team_a_passes": f"{ev_sum.completed_passes_a}/{ev_sum.total_passes_a} ({ev_sum.pass_accuracy_a_pct}%)",
             "team_b_passes": f"{ev_sum.completed_passes_b}/{ev_sum.total_passes_b} ({ev_sum.pass_accuracy_b_pct}%)",
@@ -295,6 +315,7 @@ def run_pipeline_task(task_id: str, payload: dict):
             "team_a_tackles": ev_sum.total_tackles_a,
             "team_b_tackles": ev_sum.total_tackles_b,
             "events_timeline": ev_sum.events_timeline,
+            "match_events_json": events_json_path,
             "team_a_dominance": round(float(np.mean(team_a_control_list)), 1) if team_a_control_list else 59.0,
             "team_b_dominance": round(float(np.mean(team_b_control_list)), 1) if team_b_control_list else 41.0,
             "team_a_possession": last_possession.team_a_possession_pct if last_possession else 58.0,

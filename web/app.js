@@ -36,6 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const kpiTopSpeed = document.getElementById('kpi-top-speed');
   const kpiTopPlayer = document.getElementById('kpi-top-player');
   const btnDownloadVideo = document.getElementById('btn-download-video');
+  const btnDownloadEvents = document.getElementById('btn-download-events');
   const heatmapImg = document.getElementById('heatmap-img');
   const leaderboardBody = document.getElementById('leaderboard-body');
   const tabBtns = document.querySelectorAll('.tab-btn');
@@ -153,13 +154,15 @@ document.addEventListener('DOMContentLoaded', () => {
       // Collect config toggles
       const configPayload = {
         source: videoPathToProcess,
-        radar: document.getElementById('cfg-radar').checked,
+        radar: document.getElementById('cfg-radar') ? document.getElementById('cfg-radar').checked : true,
         ball: document.getElementById('cfg-ball') ? document.getElementById('cfg-ball').checked : true,
-        speed: document.getElementById('cfg-speed').checked,
-        tactics: document.getElementById('cfg-tactics').checked,
-        heatmaps: document.getElementById('cfg-heatmaps').checked,
+        speed: document.getElementById('cfg-speed') ? document.getElementById('cfg-speed').checked : true,
+        tactics: document.getElementById('cfg-tactics') ? document.getElementById('cfg-tactics').checked : true,
+        heatmaps: document.getElementById('cfg-heatmaps') ? document.getElementById('cfg-heatmaps').checked : true,
+        cmc: document.getElementById('cfg-cmc') ? document.getElementById('cfg-cmc').checked : true,
+        reid: document.getElementById('cfg-reid') ? document.getElementById('cfg-reid').checked : true,
         events: document.getElementById('cfg-events') ? document.getElementById('cfg-events').checked : true,
-        clahe: document.getElementById('cfg-clahe').checked,
+        clahe: document.getElementById('cfg-clahe') ? document.getElementById('cfg-clahe').checked : true,
       };
 
       document.getElementById('progress-status-text').textContent = 'Executing AI Tactical Analysis...';
@@ -223,6 +226,10 @@ document.addEventListener('DOMContentLoaded', () => {
     resultsVideo.load();
     resultsVideo.play().catch((e) => console.log('Autoplay deferred by browser policy:', e));
     btnDownloadVideo.href = results.output_video;
+
+    if (btnDownloadEvents) {
+      btnDownloadEvents.href = results.match_events_json || 'outputs/logs/sample_broadcast_match_events.json';
+    }
 
     // Update Possession KPIs
     const teamA = results.team_a_possession || results.team_a_dominance || 58.0;
