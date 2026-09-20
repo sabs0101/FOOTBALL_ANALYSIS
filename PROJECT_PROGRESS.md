@@ -21,9 +21,35 @@
 | **Milestone 7** | Tactical Metrics (Positional Heatmaps, Team Convex Hull / Compactness, Voronoi Space Control) | **COMPLETED** | **62.7% vs 37.3% Space Dominance**, **944 m² Team Compactness**, 2D Gaussian Heatmaps |
 | **Milestone 8** | Ball Tracking, Trajectory Smoothing & Possession Assignment | **COMPLETED** | **Kalman State Estimator**, **67.4% vs 32.6% On-Ball Possession**, **3 Turnovers**, Comet Trail |
 | **Milestone 9** | Camera Movement & Zoom Compensation (GME & CMC) | **COMPLETED** | **Lucas-Kanade Pyramidal Flow**, **RANSAC Affine Decomposition**, **Warped Kalman State CMC** |
-| **Milestone 10** | Camera Cut Detection & Re-Identification across Cuts | *Pending* | - |
+| **Milestone 10** | Camera Cut Detection & Re-Identification across Cuts | **COMPLETED** | **Multi-Cue HSV/Edge Cut Detector**, **Multi-Zone Spatial Re-ID**, **Hungarian Matching** |
 | **Milestone 11** | Basic Football Event Recognition (Passes, Shots, Interceptions) | *Pending* | - |
 | **Milestone 12** | Interactive Web Dashboard & Polished Demonstration | **COMPLETED** | **Glassmorphic Web App**, Universal H.264 MP4 streaming, Live drag-and-drop match report |
+
+---
+
+## Milestone 10 Details: Camera Cut Detection & Re-Identification across Cuts (Completed)
+
+### 1. What We Built
+- **`src/tracking/cut_detector.py`**:
+  - `CutDetectionResult`: Dataclass containing `is_cut`, `cut_type`, `hist_distance`, `edge_diff`, `combined_score`, `frame_idx`, and `cut_count`.
+  - `CameraCutDetector`:
+    - **Multi-Cue Dissimilarity**: Combines normalized 2D Hue-Saturation Bhattacharyya distance with Canny structural edge change ratio.
+    - **Optical Flow Penalty**: Automatically penalizes RANSAC inlier collapse during abrupt scene changes.
+    - **Temporal Debouncing**: Enforces minimum shot duration interval ($15\text{ frames}$) to prevent multi-triggering on cross-dissolves and wipes.
+- **`src/tracking/reid.py`**:
+  - `ReIDFeatureExtractor`: Extracts 128D L2-normalized spatial appearance embeddings across 3 anatomical zones: Upper Torso (Jersey, 10-45%), Lower Torso (Shorts, 45-70%), and Lower Legs (Socks, 70-95%).
+  - `ReIDGallery`: Long-term persistent identity bank with Exponential Moving Average (EMA) appearance smoothing ($\alpha=0.85$), role, team affiliation, and pitch coordinate histories.
+  - `ReIDMatcher`: Solves optimal linear sum assignment (Hungarian algorithm) using cosine distance, pitch proximity priors, and hard team/role consistency constraints.
+  - `PlayerReID`: High-level engine coordinating appearance extraction, gallery maintenance, and cross-cut re-association.
+- **`src/tracking/tracker.py`**:
+  - Cut-aware state resetting: Clears Kalman coasting buffers and motion trails upon camera cuts, preventing screen-spanning line streaks and teleportation jumps.
+  - Seamlessly re-associates gallery track IDs to detections appearing after a scene transition.
+- **`src/visualization/annotator.py`**:
+  - HUD scene status badge: Displays live cut alerts (e.g. `[SCENE: CUT #1 (Re-ID)]`) and flashes an amber top border upon scene transitions.
+- **`web/` (`index.html`, `styles.css`, `app.js`)**:
+  - Added **Scene Cuts & Re-ID Match** KPI card into the 5-column dashboard grid.
+- **`tests/test_cut_detector.py` & `tests/test_reid.py`**:
+  - 11 new automated unit tests covering cut triggers, debouncing, optical flow collapse, multi-zone feature extraction, EMA gallery updates, and Hungarian identity recovery across cuts. Complete test suite: **58 / 58 tests passing**.
 
 ---
 

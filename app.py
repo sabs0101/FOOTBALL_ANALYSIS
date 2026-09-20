@@ -34,6 +34,8 @@ from src.tactics.spatial import SpatialControl
 from src.team.classifier import TeamClassifier
 from src.tracking.tracker import PlayerTracker
 from src.tracking.ball_tracker import BallTracker
+from src.tracking.cut_detector import CameraCutDetector
+from src.tracking.reid import PlayerReID
 from src.utils.config import get_device, load_config
 from src.utils.video import VideoReader, VideoWriter, get_video_properties
 from src.visualization.annotator import VideoAnnotator
@@ -83,6 +85,8 @@ def run_pipeline_task(task_id: str, payload: dict):
         preprocessor = FramePreprocessor(enable_clahe=enable_clahe) if enable_clahe else None
         detector = PlayerDetector(model_name="models/yolov8m.pt", device=preferred_device, conf_threshold=0.18, imgsz=1280)
         camera_compensator = CameraMotionCompensator()
+        cut_detector = CameraCutDetector()
+        reid = PlayerReID()
         pitch_detector = PitchDetector()
         tracker = PlayerTracker(frame_rate=int(fps))
         ball_tracker = BallTracker(fps=fps)
@@ -121,6 +125,7 @@ def run_pipeline_task(task_id: str, payload: dict):
         all_speeds = []
         team_a_control_list = []
         team_b_control_list = []
+        cut_frames = []
         last_possession = None
         start_time = time.time()
         H_matrix = calibrator.estimate_broadcast_homography((h, w)).H
@@ -139,8 +144,23 @@ def run_pipeline_task(task_id: str, payload: dict):
             # Camera Motion Estimation (GME)
             camera_motion = camera_compensator.estimate_motion(proc_frame, detections=detections, frame_idx=frame_idx)
 
-            # Tracking with CMC
-            tracked = tracker.update(filtered, camera_transform=camera_motion.transform_matrix)
+            # Camera Cut Detection (Milestone 10)
+            cut_res = cut_detector.detect_cut(
+                proc_frame,
+                frame_idx=frame_idx,
+                flow_inlier_ratio=camera_motion.confidence if camera_motion else None,
+            )
+            if cut_res.is_cut:
+                cut_frames.append(frame_idx)
+
+            # Tracking with CMC and Cut-Aware Re-ID
+            tracked = tracker.update(
+                filtered,
+                camera_transform=camera_motion.transform_matrix,
+                is_cut=cut_res.is_cut,
+                reid=reid,
+                frame=frame,
+            )
             players = tracked.get_players()
             num_players = len(players.xyxy)
             player_counts.append(num_players)
@@ -194,6 +214,8 @@ def run_pipeline_task(task_id: str, payload: dict):
                 ball_state=ball_state,
                 possession_result=possession_res,
                 camera_motion=camera_motion,
+                cut_result=cut_res,
+                reid_count=reid.total_reassignments,
                 ball_trail=ball_tracker.trail,
                 fps=round(1.0 / max(0.001, time.time() - t_frame_start), 1),
                 frame_idx=frame_idx + 1,
@@ -207,7 +229,7 @@ def run_pipeline_task(task_id: str, payload: dict):
                 radar_img = tactical_radar.render_radar(
                     player_positions_m=pos_m,
                     player_track_ids=players.tracker_ids if hasattr(players, "tracker_ids") else None,
-                    ball_position_m=ball_m,
+                    ball_position_m=ball_pos_m,
                     team_colors=player_team_colors,
                     tactical_spatial_result=spatial_res,
                     possession_result=possession_res,
@@ -245,6 +267,9 @@ def run_pipeline_task(task_id: str, payload: dict):
             "avg_players": round(float(np.mean(player_counts)), 1) if player_counts else 22.0,
             "top_speed": round(float(np.max(all_speeds)), 1) if all_speeds else 38.0,
             "top_player_id": top_carrier,
+            "camera_cuts": len(cut_frames),
+            "cut_frames": cut_frames,
+            "reid_reassignments": reid.total_reassignments,
             "team_a_dominance": round(float(np.mean(team_a_control_list)), 1) if team_a_control_list else 59.0,
             "team_b_dominance": round(float(np.mean(team_b_control_list)), 1) if team_b_control_list else 41.0,
             "team_a_possession": last_possession.team_a_possession_pct if last_possession else 58.0,

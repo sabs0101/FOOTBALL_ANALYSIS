@@ -25,6 +25,8 @@ from src.tactics.spatial import SpatialControl, TacticalSpatialResult
 from src.team.classifier import TeamClassifier
 from src.tracking.tracker import PlayerTracker
 from src.tracking.ball_tracker import BallTracker, BallState, PossessionResult
+from src.tracking.cut_detector import CameraCutDetector, CutDetectionResult
+from src.tracking.reid import PlayerReID
 from src.utils.config import get_device, load_config
 from src.utils.video import VideoReader, VideoWriter, get_video_properties
 from src.visualization.annotator import VideoAnnotator
@@ -123,6 +125,16 @@ def parse_args() -> argparse.Namespace:
         help="Disable Camera Motion Compensation (GME)",
     )
     parser.add_argument(
+        "--no-cut-detect",
+        action="store_true",
+        help="Disable camera shot transition & cut detection",
+    )
+    parser.add_argument(
+        "--no-reid",
+        action="store_true",
+        help="Disable cross-cut player appearance Re-ID matching",
+    )
+    parser.add_argument(
         "--draw-pitch-lines",
         action="store_true",
         help="Highlight detected pitch field markings in the video",
@@ -161,14 +173,16 @@ def run_pipeline(
     enable_tactics: bool = True,
     enable_ball_tracking: bool = True,
     enable_cmc: bool = True,
+    enable_cut_detection: bool = True,
+    enable_reid: bool = True,
     draw_pitch_lines: bool = False,
     draw_pitch_boundary: bool = False,
     draw_trails: bool = True,
     draw_hud: bool = True,
 ) -> Dict[str, Any]:
     """
-    Execute end-to-end tactical analysis with Camera Motion Compensation, Kalman Ball Tracking,
-    and Player Possession Assignment.
+    Execute end-to-end tactical analysis with Camera Motion Compensation, Camera Cut Detection,
+    Player Re-Identification, Kalman Ball Tracking, and Possession Assignment.
     """
     config = load_config(config_path)
 
@@ -194,7 +208,7 @@ def run_pipeline(
 
     props = get_video_properties(str(source))
     print(f"\n=======================================================")
-    print(f" AI Football Analysis - Tactical Pipeline (Milestone 9)")
+    print(f" AI Football Analysis - Tactical Pipeline (Milestone 10)")
     print(f"=======================================================")
     print(f" Source Video       : {source.name}")
     print(f" Resolution         : {props['width']}x{props['height']}")
@@ -203,6 +217,7 @@ def run_pipeline(
     print(f" Output Video       : {output_path}")
     print(f" Model              : {model_name} (conf={conf_threshold}, imgsz={imgsz})")
     print(f" Camera Motion (CMC): {'Enabled (GME & PTZ Telemetry)' if enable_cmc else 'Disabled'}")
+    print(f" Cut Detection/Re-ID: {'Enabled (HSV/Edge Cut + Hungarian Re-ID)' if (enable_cut_detection and enable_reid) else 'Disabled'}")
     print(f" Team Classification: {'Enabled (GK & Coach Refined)' if enable_team else 'Disabled'}")
     print(f" Tactical Space/Hull: {'Enabled (Voronoi & Convex Hulls)' if enable_tactics else 'Disabled'}")
     print(f" Ball & Possession  : {'Enabled (Kalman Smoothing & Possession)' if enable_ball_tracking else 'Disabled'}")
@@ -234,10 +249,10 @@ def run_pipeline(
         filter_classes=filter_classes,
     )
 
-    # 2. Camera Motion Compensator (Milestone 9)
-    camera_compensator = None
-    if enable_cmc:
-        camera_compensator = CameraMotionCompensator()
+    # 2. Camera Motion Compensator & Cut/Re-ID Engines (Milestones 9 & 10)
+    camera_compensator = CameraMotionCompensator() if enable_cmc else None
+    cut_detector = CameraCutDetector() if enable_cut_detection else None
+    reid = PlayerReID() if enable_reid else None
 
     # 3. Pitch Detector
     pitch_cfg = config.get("pitch", {})
@@ -352,6 +367,7 @@ def run_pipeline(
     avg_team_a_control = []
     avg_team_b_control = []
     pan_events = {"PAN RIGHT": 0, "PAN LEFT": 0, "STATIC": 0}
+    cut_events = []
     last_possession_result: Optional[PossessionResult] = None
 
     print(f"[Processing] Running Master Tactical Pipeline across {total_frames} frames...")
@@ -387,9 +403,26 @@ def run_pipeline(
                 camera_transform = camera_motion.transform_matrix
                 pan_events[camera_motion.pan_direction] = pan_events.get(camera_motion.pan_direction, 0) + 1
 
-            # Step 5: Multi-Object Tracking (ByteTrack + CMC)
+            # Step 4.5: Camera Cut Detection (Milestone 10)
+            cut_result = None
+            if cut_detector is not None:
+                cut_result = cut_detector.detect_cut(
+                    proc_frame,
+                    frame_idx=frame_idx,
+                    flow_inlier_ratio=camera_motion.confidence if camera_motion else None,
+                )
+                if cut_result.is_cut:
+                    cut_events.append(frame_idx)
+
+            # Step 5: Multi-Object Tracking (ByteTrack + CMC + Cut-Aware Re-ID)
             if tracker is not None:
-                processed_results = tracker.update(detections, camera_transform=camera_transform)
+                processed_results = tracker.update(
+                    detections,
+                    camera_transform=camera_transform,
+                    is_cut=cut_result.is_cut if cut_result else False,
+                    reid=reid,
+                    frame=frame,
+                )
                 for tid in processed_results.tracker_ids:
                     if tid >= 0:
                         unique_track_ids.add(int(tid))
@@ -506,6 +539,8 @@ def run_pipeline(
                 ball_state=ball_state,
                 possession_result=possession_result,
                 camera_motion=camera_motion,
+                cut_result=cut_result,
+                reid_count=reid.total_reassignments if reid is not None else 0,
                 ball_trail=ball_tracker.trail if ball_tracker is not None else None,
                 fps=fps_inst,
                 frame_idx=frame_idx + 1,
@@ -570,13 +605,16 @@ def run_pipeline(
         }
 
     print(f"\n=======================================================")
-    print(f" Processing Complete (Milestone 9)!")
+    print(f" Processing Complete (Milestone 10)!")
     print(f"=======================================================")
     print(f" Total Elapsed Time     : {total_time:.2f} seconds")
     print(f" Average Speed          : {avg_fps:.2f} FPS")
     print(f" Avg On-Pitch Players   : {avg_players:.1f}")
     print(f" Pitch Locked           : {pitch_detected_count}/{total_frames} frames ({pitch_detected_count/max(1,total_frames)*100:.1f}%)")
     print(f" Camera Motion Events   : {pan_events.get('PAN RIGHT', 0)} Pan Right, {pan_events.get('PAN LEFT', 0)} Pan Left, {pan_events.get('STATIC', 0)} Static")
+    print(f" Camera Cut Events      : {len(cut_events)} cuts detected (Frames: {cut_events[:8]}{'...' if len(cut_events) > 8 else ''})")
+    if reid is not None:
+        print(f" Re-ID Reassignments   : {reid.total_reassignments} player identities preserved across cuts")
     print(f" Team A Space Dominance : {mean_ctrl_a:.1f}% pitch space control")
     print(f" Team B Space Dominance : {mean_ctrl_b:.1f}% pitch space control")
     if poss_summary:
@@ -603,6 +641,11 @@ def run_pipeline(
         "device": device_label,
         "camera_motion_compensation_enabled": enable_cmc,
         "camera_pan_events": pan_events,
+        "camera_cut_detection_enabled": enable_cut_detection,
+        "total_camera_cuts": len(cut_events),
+        "camera_cut_frames": cut_events,
+        "player_reid_enabled": enable_reid,
+        "reid_total_reassignments": reid.total_reassignments if reid is not None else 0,
         "team_classification_enabled": enable_team,
         "tactical_space_control_enabled": enable_tactics,
         "ball_possession_summary": poss_summary,
@@ -643,6 +686,8 @@ if __name__ == "__main__":
         enable_tactics=not args.no_tactics,
         enable_ball_tracking=not args.no_ball_track,
         enable_cmc=not args.no_cmc,
+        enable_cut_detection=not args.no_cut_detect,
+        enable_reid=not args.no_reid,
         draw_pitch_lines=args.draw_pitch_lines,
         draw_pitch_boundary=args.draw_pitch_boundary,
         draw_trails=not args.no_trails,

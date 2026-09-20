@@ -1,4 +1,4 @@
-﻿/* ==========================================================================
+/* ==========================================================================
    AI FOOTBALL TACTICAL ANALYTICS - MODERN DARK GLASSMORPHISM DESIGN SYSTEM
    ========================================================================== */
 
@@ -657,19 +657,25 @@ input:checked + .slider:before {
 /* KPI Cards Grid */
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 20px;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 16px;
   margin-bottom: 28px;
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 1200px) {
   .kpi-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .kpi-grid {
+    grid-template-columns: repeat(1, 1fr);
   }
 }
 
 .kpi-card {
-  padding: 20px;
+  padding: 18px 16px;
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: 16px;
@@ -690,6 +696,7 @@ input:checked + .slider:before {
 .kpi-card.cyan::before { background: var(--accent-cyan); }
 .kpi-card.amber::before { background: var(--accent-amber); }
 .kpi-card.purple::before { background: var(--accent-purple); }
+.kpi-card.pink::before { background: #EC4899; }
 
 .kpi-label {
   font-size: 12px;

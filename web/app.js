@@ -242,6 +242,17 @@ document.addEventListener('DOMContentLoaded', () => {
     kpiTopSpeed.textContent = `${results.top_speed.toFixed(1)} km/h`;
     kpiTopPlayer.textContent = `Player #${results.top_player_id || 19} • High-Intensity Sprint`;
 
+    const kpiCuts = document.getElementById('kpi-cuts');
+    const kpiReidSubtext = document.getElementById('kpi-reid-subtext');
+    if (kpiCuts) {
+      const cuts = results.camera_cuts || 0;
+      kpiCuts.textContent = `${cuts} Camera ${cuts === 1 ? 'Cut' : 'Cuts'}`;
+    }
+    if (kpiReidSubtext) {
+      const reids = results.reid_reassignments || 0;
+      kpiReidSubtext.textContent = `Re-ID Match Active • ${reids} Reconnects`;
+    }
+
     // Refresh Heatmap
     heatmapImg.src = `outputs/heatmaps/heatmap_team_a.png?t=${Date.now()}`;
 

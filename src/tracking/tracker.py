@@ -1,7 +1,7 @@
 """
-Multi-Object Tracking Module for Football Analysis (Milestone 2, Kalman & Milestone 9 CMC).
+Multi-Object Tracking Module for Football Analysis (Milestones 2, 9 CMC & 10 Cut Re-ID).
 Uses ByteTrack with Kalman Filter motion prediction, Camera Motion Compensation (CMC),
-center extrapolation coasting, and automated memory reclamation.
+Camera Cut awareness, long-term Re-ID identity preservation, and lost-track coasting.
 """
 
 from collections import defaultdict, deque
@@ -13,6 +13,7 @@ import supervision as sv
 from supervision import ByteTrack, Detections
 
 from ..detection.detector import DetectionResult
+from .reid import PlayerReID, ReIDMatchResult
 
 # Backwards compatibility alias
 TrackResult = DetectionResult
@@ -21,8 +22,8 @@ TrackResult = DetectionResult
 class PlayerTracker:
     """
     ByteTrack-based Multi-Object Tracker with Kalman Filter motion prediction,
-    Camera Motion Compensation (CMC), lost-track coasting (interpolation across dropouts),
-    and historical movement trails.
+    Camera Motion Compensation (CMC), Camera Cut Boundary resets, Re-ID cross-cut
+    re-association, and historical movement trails.
     """
 
     def __init__(
@@ -35,17 +36,15 @@ class PlayerTracker:
         enable_coasting: bool = True,
         max_coast_frames: int = 4,
     ):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", category=FutureWarning)
-            self.tracker = ByteTrack(
-                track_activation_threshold=track_activation_threshold,
-                lost_track_buffer=lost_track_buffer,
-                minimum_matching_threshold=minimum_matching_threshold,
-                frame_rate=frame_rate,
-            )
+        self.track_activation_threshold = track_activation_threshold
+        self.lost_track_buffer = lost_track_buffer
+        self.minimum_matching_threshold = minimum_matching_threshold
+        self.frame_rate = frame_rate
         self.trail_length = trail_length
         self.enable_coasting = enable_coasting
         self.max_coast_frames = max_coast_frames
+
+        self._init_tracker()
 
         # Trail storage: {track_id: deque([(x_center, y_bottom), ...])}
         self.trails: Dict[int, deque] = defaultdict(lambda: deque(maxlen=self.trail_length))
@@ -54,6 +53,28 @@ class PlayerTracker:
         self.last_boxes: Dict[int, np.ndarray] = {}
         self.last_velocities: Dict[int, np.ndarray] = {}
         self.lost_counters: Dict[int, int] = {}
+
+    def _init_tracker(self):
+        """Initialize the underlying ByteTrack instance."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=FutureWarning)
+            self.tracker = ByteTrack(
+                track_activation_threshold=self.track_activation_threshold,
+                lost_track_buffer=self.lost_track_buffer,
+                minimum_matching_threshold=self.minimum_matching_threshold,
+                frame_rate=self.frame_rate,
+            )
+
+    def reset_tracks(self):
+        """
+        Reset tracker state and motion buffers across camera cuts or scene transitions.
+        Prevents Kalman state extrapolation across disconnected scenes.
+        """
+        self._init_tracker()
+        self.last_boxes.clear()
+        self.last_velocities.clear()
+        self.lost_counters.clear()
+        self.trails.clear()
 
     def _apply_camera_motion_compensation(self, camera_transform: np.ndarray):
         """
@@ -86,13 +107,23 @@ class PlayerTracker:
         self,
         detection_result: DetectionResult,
         camera_transform: Optional[np.ndarray] = None,
+        is_cut: bool = False,
+        reid: Optional[PlayerReID] = None,
+        frame: Optional[np.ndarray] = None,
+        candidate_teams: Optional[List[int]] = None,
+        candidate_roles: Optional[List[int]] = None,
+        candidate_positions: Optional[List[Optional[Tuple[float, float]]]] = None,
     ) -> DetectionResult:
         """
         Update tracker with detections, perform Camera Motion Compensation (CMC),
-        and emit persistent track IDs with Kalman coasting.
+        Camera Cut resets, and Re-ID identity preservation across scene transitions.
         """
-        # Apply Camera Motion Compensation before processing current frame
-        if camera_transform is not None:
+        # If a camera cut occurred, reset motion state
+        if is_cut:
+            self.reset_tracks()
+
+        # Apply Camera Motion Compensation (only when no cut occurred)
+        if camera_transform is not None and not is_cut:
             self._apply_camera_motion_compensation(camera_transform)
 
         if len(detection_result.xyxy) == 0:
@@ -119,7 +150,33 @@ class PlayerTracker:
             tracked_boxes = tracked_sv.xyxy
             tracked_confs = tracked_sv.confidence if tracked_sv.confidence is not None else player_confs[:len(tracked_sv.xyxy)]
             tracked_cids = tracked_sv.class_id if tracked_sv.class_id is not None else np.zeros(len(tracked_sv.xyxy), dtype=int)
-            tracked_tids = tracked_sv.tracker_id if tracked_sv.tracker_id is not None else np.full(len(tracked_sv.xyxy), -1, dtype=int)
+            tracked_tids = tracked_sv.tracker_id.copy() if tracked_sv.tracker_id is not None else np.full(len(tracked_sv.xyxy), -1, dtype=int)
+
+            # Cross-Cut Re-ID Matching: If a cut occurred, re-assign gallery IDs
+            if is_cut and reid is not None and frame is not None and len(tracked_boxes) > 0:
+                reid_res = reid.reassociate(
+                    frame=frame,
+                    boxes=tracked_boxes,
+                    candidate_teams=candidate_teams,
+                    candidate_roles=candidate_roles,
+                    candidate_positions=candidate_positions,
+                    frame_idx=detection_result.frame_idx,
+                )
+                for det_idx, gallery_tid in reid_res.matches.items():
+                    if det_idx < len(tracked_tids):
+                        tracked_tids[det_idx] = gallery_tid
+
+            # Update Re-ID gallery with current active tracks
+            if reid is not None and frame is not None and len(tracked_boxes) > 0:
+                reid.update_gallery(
+                    frame=frame,
+                    boxes=tracked_boxes,
+                    track_ids=tracked_tids,
+                    team_ids=np.array(candidate_teams) if candidate_teams is not None else None,
+                    role_ids=np.array(candidate_roles) if candidate_roles is not None else None,
+                    pitch_positions=candidate_positions,
+                    frame_idx=detection_result.frame_idx,
+                )
         else:
             tracked_boxes = np.empty((0, 4), dtype=np.float32)
             tracked_confs = np.empty((0,), dtype=np.float32)
@@ -145,8 +202,8 @@ class PlayerTracker:
                 self.last_boxes[tid] = box.copy()
                 self.lost_counters[tid] = 0
 
-        # Kalman Coasting across temporary single-frame dropouts
-        if self.enable_coasting:
+        # Kalman Coasting across temporary single-frame dropouts (only in non-cut frames)
+        if self.enable_coasting and not is_cut:
             coasted_boxes = []
             coasted_confs = []
             coasted_cids = []

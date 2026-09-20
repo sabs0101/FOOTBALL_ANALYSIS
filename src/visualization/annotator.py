@@ -390,6 +390,8 @@ class VideoAnnotator:
         team_summary: Optional[Dict[str, float]] = None,
         possession_result: Optional[Any] = None,
         camera_motion: Optional[Any] = None,
+        cut_result: Optional[Any] = None,
+        reid_count: int = 0,
         device_name: str = "GPU",
     ) -> np.ndarray:
         """
@@ -403,7 +405,9 @@ class VideoAnnotator:
         cv2.addWeighted(dark_overlay, 0.78, top_bar, 0.22, 0, top_bar)
         frame[0:hud_height, 0:w] = top_bar
 
-        cv2.line(frame, (0, hud_height), (w, hud_height), (0, 215, 255), 2, cv2.LINE_AA)
+        # High-visibility HUD bottom border (flashes amber on camera cut)
+        border_color = (0, 140, 255) if (cut_result is not None and cut_result.is_cut) else (0, 215, 255)
+        cv2.line(frame, (0, hud_height), (w, hud_height), border_color, 2, cv2.LINE_AA)
 
         cnt_a = team_counts.get("Team A", 0) if team_counts else 0
         cnt_b = team_counts.get("Team B", 0) if team_counts else 0
@@ -422,9 +426,12 @@ class VideoAnnotator:
             else:
                 carrier_str = "BALL: FREE"
 
-        # Camera Motion breakdown (Milestone 9)
-        cam_str = "CAM: LOCKED"
-        if camera_motion is not None and self.draw_camera_motion:
+        # Camera Motion & Scene Cut breakdown (Milestones 9 & 10)
+        if cut_result is not None and cut_result.is_cut:
+            cam_str = f"SCENE: CUT #{cut_result.cut_count} (Re-ID)"
+        elif cut_result is not None and cut_result.cut_count > 0:
+            cam_str = f"CUTS: {cut_result.cut_count} | RE-ID: {reid_count}"
+        elif camera_motion is not None and self.draw_camera_motion:
             pan = camera_motion.pan_direction
             zoom = camera_motion.zoom_factor
             dx = camera_motion.dx_pixels
@@ -434,6 +441,8 @@ class VideoAnnotator:
                 cam_str = f"CAM: {camera_motion.zoom_state} ({zoom:.2f}x)"
             else:
                 cam_str = f"CAM: STABLE ({zoom:.2f}x)"
+        else:
+            cam_str = "CAM: LOCKED"
 
         hud_items = [
             f"FRAME: {frame_idx:04d}/{total_frames:04d}",
@@ -451,6 +460,9 @@ class VideoAnnotator:
             y = 30
             if "BALL" in text or "CARRIER" in text:
                 dot_color = (0, 255, 128)
+                cv2.circle(frame, (x - 4, y - 6), 4, dot_color, -1, cv2.LINE_AA)
+            elif "SCENE" in text or "CUT" in text:
+                dot_color = (0, 140, 255)
                 cv2.circle(frame, (x - 4, y - 6), 4, dot_color, -1, cv2.LINE_AA)
             elif "CAM" in text:
                 dot_color = (0, 215, 255) if "STABLE" in text or "LOCKED" in text else (255, 180, 0)
@@ -483,6 +495,8 @@ class VideoAnnotator:
         ball_state: Optional[Any] = None,
         possession_result: Optional[Any] = None,
         camera_motion: Optional[Any] = None,
+        cut_result: Optional[Any] = None,
+        reid_count: int = 0,
         ball_trail: Optional[Any] = None,
         fps: float = 0.0,
         frame_idx: int = 0,
@@ -491,7 +505,7 @@ class VideoAnnotator:
     ) -> np.ndarray:
         """
         Complete annotation pipeline combining pitch lines, role badges, speed indicators,
-        ball comet trails, possession beacons, camera motion telemetry, spatial metrics, and HUD.
+        ball comet trails, possession beacons, camera motion telemetry, cut/ReID indicators, spatial metrics, and HUD.
         """
         annotated = self.draw_pitch(frame, pitch_result)
         annotated = self.draw_detections(
@@ -537,7 +551,10 @@ class VideoAnnotator:
                 team_summary=team_summary,
                 possession_result=possession_result,
                 camera_motion=camera_motion,
+                cut_result=cut_result,
+                reid_count=reid_count,
                 device_name=device_name,
             )
 
         return annotated
+
