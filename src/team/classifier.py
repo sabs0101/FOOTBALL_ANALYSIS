@@ -1,4 +1,4 @@
-﻿"""
+"""
 Automated Team, Goalkeeper, Referee, and Coach Identification (Polished & Hardened).
 Accurately separates:
 - Team A Outfield [A] (White kits)
@@ -193,9 +193,10 @@ class TeamClassifier:
         deepest_a_idx = -1
         deepest_b_idx = -1
 
-        if positions_m is not None and len(positions_m) > 0:
+        if positions_m is not None and len(positions_m) > 0 and len(detections.class_ids) > 0:
+            limit = min(len(positions_m), len(detections.class_ids))
             valid_p_indices = [
-                i for i in range(len(positions_m))
+                i for i in range(limit)
                 if detections.class_ids[i] == 0 and -2.0 <= positions_m[i, 0] <= 107.0 and -2.0 <= positions_m[i, 1] <= 70.0
             ]
             if valid_p_indices:

@@ -29,6 +29,9 @@ class DetectionResult:
     track_ids: Optional[np.ndarray] = None
     frame_idx: int = 0
 
+    def __len__(self) -> int:
+        return len(self.xyxy)
+
     @property
     def num_detections(self) -> int:
         return len(self.xyxy)

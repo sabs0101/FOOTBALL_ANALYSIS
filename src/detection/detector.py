@@ -1,4 +1,4 @@
-﻿"""
+"""
 YOLO-based Player and Ball Detection Module for Football Analytics (Polished & Hardened).
 Supports multi-class confidence tuning (high recall for small football, precision for players),
 FP16 CUDA acceleration, and robust bounding box sanitization.
@@ -35,6 +35,9 @@ class DetectionResult:
     tracker_ids: Optional[np.ndarray] = None
     trails: Optional[Dict[int, Any]] = None
     frame_idx: int = 0
+
+    def __len__(self) -> int:
+        return len(self.xyxy)
 
     @property
     def num_detections(self) -> int:
