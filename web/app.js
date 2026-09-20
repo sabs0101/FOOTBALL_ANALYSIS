@@ -1013,8 +1013,8 @@ document.addEventListener('DOMContentLoaded', () => {
           body: formData,
         });
         const uploadData = await uploadRes.json();
-        if (uploadData.status === 'success') {
-          videoPathToProcess = uploadData.filepath;
+        if (uploadData.status === 'success' || uploadData.status === 'uploaded') {
+          videoPathToProcess = uploadData.filepath || uploadData.saved_path;
         } else {
           throw new Error(uploadData.error || 'Upload failed');
         }

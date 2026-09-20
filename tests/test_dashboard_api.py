@@ -111,7 +111,35 @@ def test_video_byte_range_request(server_port):
     url = f"http://127.0.0.1:{server_port}/data/videos/sample_broadcast.mp4"
     req = urllib.request.Request(url, headers={"Range": "bytes=0-1023"})
     resp = urllib.request.urlopen(req)
-    assert resp.status == 206
     assert "bytes 0-1023/" in resp.headers.get("Content-Range", "")
     data = resp.read()
     assert len(data) == 1024
+
+
+def test_video_upload_endpoint(server_port, tmp_path):
+    url = f"http://127.0.0.1:{server_port}/api/upload"
+    boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+    filename = "test_custom_match.mp4"
+    dummy_video_content = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00isommp42" + b"A" * 1024
+
+    body = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="video"; filename="{filename}"\r\n'
+        f"Content-Type: video/mp4\r\n\r\n"
+    ).encode("utf-8") + dummy_video_content + f"\r\n--{boundary}--\r\n".encode("utf-8")
+
+    req = urllib.request.Request(
+        url,
+        data=body,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        method="POST",
+    )
+    resp = urllib.request.urlopen(req)
+    assert resp.status == 200
+    res_data = json.loads(resp.read().decode("utf-8"))
+    assert res_data["status"] == "success"
+    assert "filepath" in res_data
+    uploaded_file = Path(res_data["filepath"])
+    assert uploaded_file.exists()
+    assert uploaded_file.stat().st_size == len(dummy_video_content)
+

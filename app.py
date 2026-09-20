@@ -416,23 +416,91 @@ class DashboardHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         # 2. API: Video Upload
         if path == "/api/upload":
             content_type = self.headers.get("Content-Type", "")
+            content_length_header = self.headers.get("Content-Length")
             if "multipart/form-data" in content_type:
-                form = cgi.FieldStorage(
-                    fp=self.rfile,
-                    headers=self.headers,
-                    environ={"REQUEST_METHOD": "POST", "CONTENT_TYPE": content_type},
-                )
-                if "video" in form:
-                    file_item = form["video"]
-                    filename = file_item.filename or f"upload_{int(time.time())}.mp4"
+                try:
+                    content_length = int(content_length_header) if content_length_header else None
+                    boundary = None
+                    for param in content_type.split(";"):
+                        param = param.strip()
+                        if param.startswith("boundary="):
+                            boundary = param.split("boundary=")[1].strip('"\'')
+                            break
+
                     upload_dir = Path("data/uploads")
                     upload_dir.mkdir(parents=True, exist_ok=True)
-                    save_path = upload_dir / filename
+                    saved_path = None
+                    filename = f"upload_{int(time.time())}.mp4"
 
-                    with open(save_path, "wb") as f:
-                        f.write(file_item.file.read())
+                    if boundary and content_length and content_length > 0:
+                        boundary_bytes = boundary.encode("utf-8")
+                        raw_data = self.rfile.read(content_length)
 
-                    self._send_json({"status": "uploaded", "saved_path": str(save_path)})
+                        # Find filename header in multipart payload
+                        header_end = raw_data.find(b"\r\n\r\n")
+                        if header_end != -1:
+                            header_part = raw_data[:header_end].decode("utf-8", errors="ignore")
+                            import re
+                            fn_match = re.search(r'filename="([^"]+)"', header_part)
+                            if fn_match:
+                                raw_name = Path(fn_match.group(1)).name
+                                filename = "".join(c for c in raw_name if c.isalnum() or c in "._- ") or filename
+
+                            body_start = header_end + 4
+                            trailing_marker = b"\r\n--" + boundary_bytes
+                            body_end = raw_data.rfind(trailing_marker)
+                            if body_end == -1:
+                                body_end = len(raw_data)
+
+                            file_bytes = raw_data[body_start:body_end]
+                            saved_path = upload_dir / filename
+                            with open(saved_path, "wb") as f:
+                                f.write(file_bytes)
+
+                    # Fallback to cgi.FieldStorage if boundary parser didn't produce file
+                    if not saved_path or not saved_path.exists() or saved_path.stat().st_size == 0:
+                        form = cgi.FieldStorage(
+                            fp=self.rfile,
+                            headers=self.headers,
+                            environ={
+                                "REQUEST_METHOD": "POST",
+                                "CONTENT_TYPE": content_type,
+                                "CONTENT_LENGTH": str(content_length or 0),
+                            },
+                        )
+                        if "video" in form:
+                            file_item = form["video"]
+                            raw_name = Path(file_item.filename or filename).name
+                            filename = "".join(c for c in raw_name if c.isalnum() or c in "._- ") or filename
+                            saved_path = upload_dir / filename
+                            with open(saved_path, "wb") as f:
+                                if hasattr(file_item, "file") and file_item.file:
+                                    f.write(file_item.file.read())
+                                elif hasattr(file_item, "value"):
+                                    f.write(file_item.value)
+
+                    if saved_path and saved_path.exists() and saved_path.stat().st_size > 0:
+                        posix_path = str(saved_path.as_posix())
+                        self._send_json({
+                            "status": "success",
+                            "filepath": posix_path,
+                            "saved_path": posix_path,
+                            "filename": filename,
+                            "size_bytes": saved_path.stat().st_size,
+                        })
+                        return
+                    else:
+                        self._send_json({
+                            "status": "error",
+                            "error": "Uploaded file is empty or missing video payload",
+                        })
+                        return
+
+                except Exception as err:
+                    self._send_json({
+                        "status": "error",
+                        "error": f"Upload processing failed: {str(err)}",
+                    })
                     return
 
             self.send_error(400, "Invalid Upload Format")
