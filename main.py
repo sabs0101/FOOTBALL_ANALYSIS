@@ -15,6 +15,7 @@ from tqdm import tqdm
 
 from src.preprocessing.preprocessor import FramePreprocessor
 from src.analytics.speed_distance import SpeedEstimator
+from src.analytics.events import EventDetector, MatchEvent, EventSummary
 from src.calibration.homography import PitchHomography
 from src.calibration.template import PitchTemplate
 from src.calibration.camera_motion import CameraMotionCompensator, CameraMotionResult
@@ -135,6 +136,11 @@ def parse_args() -> argparse.Namespace:
         help="Disable cross-cut player appearance Re-ID matching",
     )
     parser.add_argument(
+        "--no-events",
+        action="store_true",
+        help="Disable discrete football match event recognition (passes, shots, duels)",
+    )
+    parser.add_argument(
         "--draw-pitch-lines",
         action="store_true",
         help="Highlight detected pitch field markings in the video",
@@ -175,6 +181,7 @@ def run_pipeline(
     enable_cmc: bool = True,
     enable_cut_detection: bool = True,
     enable_reid: bool = True,
+    enable_events: bool = True,
     draw_pitch_lines: bool = False,
     draw_pitch_boundary: bool = False,
     draw_trails: bool = True,
@@ -182,7 +189,7 @@ def run_pipeline(
 ) -> Dict[str, Any]:
     """
     Execute end-to-end tactical analysis with Camera Motion Compensation, Camera Cut Detection,
-    Player Re-Identification, Kalman Ball Tracking, and Possession Assignment.
+    Player Re-Identification, Discrete Football Match Event Recognition, Kalman Ball Tracking, and Possession Assignment.
     """
     config = load_config(config_path)
 
@@ -253,6 +260,9 @@ def run_pipeline(
     camera_compensator = CameraMotionCompensator() if enable_cmc else None
     cut_detector = CameraCutDetector() if enable_cut_detection else None
     reid = PlayerReID() if enable_reid else None
+
+    # 2.5 Match Event Detector (Milestone 11)
+    event_detector = EventDetector(fps=props["fps"]) if enable_events else None
 
     # 3. Pitch Detector
     pitch_cfg = config.get("pitch", {})
@@ -493,6 +503,17 @@ def run_pipeline(
                     ball_pos_m = ball_state.position_m
                 last_possession_result = possession_result
 
+            # Step 8.5: Discrete Match Event Recognition (Milestone 11)
+            if event_detector is not None:
+                event_detector.update(
+                    ball_state=ball_state,
+                    possession_result=possession_result,
+                    player_positions_m=player_positions_m if len(player_positions_m) > 0 else None,
+                    player_track_ids=players_res.tracker_ids if len(players_res.tracker_ids) > 0 else None,
+                    player_team_ids=player_team_ids,
+                    frame_idx=frame_idx,
+                )
+
             # Step 9: Speed & Distance Estimation
             player_metrics = {}
             team_summary = {}
@@ -541,6 +562,7 @@ def run_pipeline(
                 camera_motion=camera_motion,
                 cut_result=cut_result,
                 reid_count=reid.total_reassignments if reid is not None else 0,
+                active_event=event_detector.active_event if event_detector is not None else None,
                 ball_trail=ball_tracker.trail if ball_tracker is not None else None,
                 fps=fps_inst,
                 frame_idx=frame_idx + 1,
@@ -604,8 +626,25 @@ def run_pipeline(
             "player_possession_counts": last_possession_result.player_possession_counts,
         }
 
+    # Compile event summary
+    event_summary_dict = {}
+    if event_detector is not None:
+        ev_sum = event_detector.get_summary()
+        event_summary_dict = {
+            "total_events": ev_sum.total_events,
+            "team_a_passes": f"{ev_sum.completed_passes_a}/{ev_sum.total_passes_a} ({ev_sum.pass_accuracy_a_pct}%)",
+            "team_b_passes": f"{ev_sum.completed_passes_b}/{ev_sum.total_passes_b} ({ev_sum.pass_accuracy_b_pct}%)",
+            "team_a_shots": ev_sum.total_shots_a,
+            "team_b_shots": ev_sum.total_shots_b,
+            "team_a_interceptions": ev_sum.total_interceptions_a,
+            "team_b_interceptions": ev_sum.total_interceptions_b,
+            "team_a_tackles": ev_sum.total_tackles_a,
+            "team_b_tackles": ev_sum.total_tackles_b,
+            "timeline": ev_sum.events_timeline,
+        }
+
     print(f"\n=======================================================")
-    print(f" Processing Complete (Milestone 10)!")
+    print(f" Processing Complete (Milestone 11)!")
     print(f"=======================================================")
     print(f" Total Elapsed Time     : {total_time:.2f} seconds")
     print(f" Average Speed          : {avg_fps:.2f} FPS")
@@ -615,6 +654,14 @@ def run_pipeline(
     print(f" Camera Cut Events      : {len(cut_events)} cuts detected (Frames: {cut_events[:8]}{'...' if len(cut_events) > 8 else ''})")
     if reid is not None:
         print(f" Re-ID Reassignments   : {reid.total_reassignments} player identities preserved across cuts")
+    if event_detector is not None:
+        ev_sum = event_detector.get_summary()
+        print(f" Match Events Detected  : {ev_sum.total_events} events logged")
+        print(f"   - Team A Passes      : {ev_sum.completed_passes_a}/{ev_sum.total_passes_a} ({ev_sum.pass_accuracy_a_pct}%)")
+        print(f"   - Team B Passes      : {ev_sum.completed_passes_b}/{ev_sum.total_passes_b} ({ev_sum.pass_accuracy_b_pct}%)")
+        print(f"   - Shots on Goal      : Team A: {ev_sum.total_shots_a} | Team B: {ev_sum.total_shots_b}")
+        print(f"   - Interceptions      : Team A: {ev_sum.total_interceptions_a} | Team B: {ev_sum.total_interceptions_b}")
+        print(f"   - Tackles / Duels    : Team A: {ev_sum.total_tackles_a} | Team B: {ev_sum.total_tackles_b}")
     print(f" Team A Space Dominance : {mean_ctrl_a:.1f}% pitch space control")
     print(f" Team B Space Dominance : {mean_ctrl_b:.1f}% pitch space control")
     if poss_summary:
@@ -646,6 +693,8 @@ def run_pipeline(
         "camera_cut_frames": cut_events,
         "player_reid_enabled": enable_reid,
         "reid_total_reassignments": reid.total_reassignments if reid is not None else 0,
+        "match_events_enabled": enable_events,
+        "match_events_summary": event_summary_dict,
         "team_classification_enabled": enable_team,
         "tactical_space_control_enabled": enable_tactics,
         "ball_possession_summary": poss_summary,
@@ -664,6 +713,12 @@ def run_pipeline(
     log_path = log_dir / f"{source.stem}_tactical_master_summary.json"
     with open(log_path, "w", encoding="utf-8") as f:
         json.dump(summary_data, f, indent=2)
+
+    # Save dedicated match events timeline log
+    if event_detector is not None:
+        events_path = log_dir / f"{source.stem}_match_events.json"
+        with open(events_path, "w", encoding="utf-8") as f:
+            json.dump(event_summary_dict, f, indent=2)
 
     return summary_data
 
@@ -688,6 +743,7 @@ if __name__ == "__main__":
         enable_cmc=not args.no_cmc,
         enable_cut_detection=not args.no_cut_detect,
         enable_reid=not args.no_reid,
+        enable_events=not args.no_events,
         draw_pitch_lines=args.draw_pitch_lines,
         draw_pitch_boundary=args.draw_pitch_boundary,
         draw_trails=not args.no_trails,

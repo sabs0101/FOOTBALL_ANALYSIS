@@ -483,6 +483,61 @@ class VideoAnnotator:
 
         return frame
 
+    def draw_event_toast(
+        self,
+        frame: np.ndarray,
+        active_event: Any,
+    ) -> np.ndarray:
+        """
+        Render a glowing broadcast tactical event notification toast (Milestone 11).
+        """
+        if active_event is None:
+            return frame
+
+        h, w, _ = frame.shape
+        toast_w = 430
+        toast_h = 36
+        tx1 = (w - toast_w) // 2
+        ty1 = 56  # Just below top HUD bar
+        tx2 = tx1 + toast_w
+        ty2 = ty1 + toast_h
+
+        # Event color
+        etype = getattr(active_event, "event_type", "EVENT")
+        if etype == "SHOT":
+            theme_color = (0, 60, 255)       # Red/Orange for shots
+            badge_text = "SHOT ATTEMPT"
+        elif etype == "PASS":
+            theme_color = (0, 229, 153)      # Emerald green for passes
+            badge_text = "PASS COMPLETED"
+        elif etype == "INTERCEPTION":
+            theme_color = (0, 215, 255)      # Amber for interceptions
+            badge_text = "INTERCEPTION"
+        elif etype == "TACKLE":
+            theme_color = (220, 50, 200)      # Purple/Magenta for tackles
+            badge_text = "TACKLE / DUEL"
+        else:
+            theme_color = (200, 200, 200)
+            badge_text = "MATCH EVENT"
+
+        # Background card
+        sub = frame[ty1:ty2, tx1:tx2]
+        if sub.shape[0] > 0 and sub.shape[1] > 0:
+            overlay = np.full_like(sub, (15, 18, 24))
+            cv2.addWeighted(overlay, 0.85, sub, 0.15, 0, sub)
+            frame[ty1:ty2, tx1:tx2] = sub
+
+        # Left accent stripe & subtle border
+        cv2.rectangle(frame, (tx1, ty1), (tx1 + 5, ty2), theme_color, -1)
+        cv2.rectangle(frame, (tx1, ty1), (tx2, ty2), (60, 70, 85), 1, cv2.LINE_AA)
+
+        # Event description text
+        desc = getattr(active_event, "description", "")
+        cv2.putText(frame, badge_text, (tx1 + 14, ty1 + 14), self.font, 0.36, theme_color, 1, cv2.LINE_AA)
+        cv2.putText(frame, desc, (tx1 + 14, ty1 + 28), self.font, 0.33, (240, 240, 240), 1, cv2.LINE_AA)
+
+        return frame
+
     def annotate(
         self,
         frame: np.ndarray,
@@ -497,6 +552,7 @@ class VideoAnnotator:
         camera_motion: Optional[Any] = None,
         cut_result: Optional[Any] = None,
         reid_count: int = 0,
+        active_event: Optional[Any] = None,
         ball_trail: Optional[Any] = None,
         fps: float = 0.0,
         frame_idx: int = 0,
@@ -505,7 +561,8 @@ class VideoAnnotator:
     ) -> np.ndarray:
         """
         Complete annotation pipeline combining pitch lines, role badges, speed indicators,
-        ball comet trails, possession beacons, camera motion telemetry, cut/ReID indicators, spatial metrics, and HUD.
+        ball comet trails, possession beacons, camera motion telemetry, cut/ReID indicators,
+        tactical match event toasts (Milestone 11), spatial metrics, and HUD.
         """
         annotated = self.draw_pitch(frame, pitch_result)
         annotated = self.draw_detections(
@@ -521,6 +578,9 @@ class VideoAnnotator:
 
         if self.draw_possession and possession_result:
             annotated = self.draw_possession_beacon(annotated, detections, possession_result, team_result=team_result)
+
+        if active_event is not None:
+            annotated = self.draw_event_toast(annotated, active_event)
 
         if self.enable_hud:
             num_players = len(detections.get_players().xyxy) if hasattr(detections, "get_players") else 0
@@ -557,4 +617,5 @@ class VideoAnnotator:
             )
 
         return annotated
+
 

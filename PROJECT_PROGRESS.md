@@ -22,8 +22,36 @@
 | **Milestone 8** | Ball Tracking, Trajectory Smoothing & Possession Assignment | **COMPLETED** | **Kalman State Estimator**, **67.4% vs 32.6% On-Ball Possession**, **3 Turnovers**, Comet Trail |
 | **Milestone 9** | Camera Movement & Zoom Compensation (GME & CMC) | **COMPLETED** | **Lucas-Kanade Pyramidal Flow**, **RANSAC Affine Decomposition**, **Warped Kalman State CMC** |
 | **Milestone 10** | Camera Cut Detection & Re-Identification across Cuts | **COMPLETED** | **Multi-Cue HSV/Edge Cut Detector**, **Multi-Zone Spatial Re-ID**, **Hungarian Matching** |
-| **Milestone 11** | Basic Football Event Recognition (Passes, Shots, Interceptions) | *Pending* | - |
+| **Milestone 11** | Basic Football Event Recognition (Passes, Shots, Interceptions, Tackles) | **COMPLETED** | **Spatial-Temporal Event FSM**, **HUD Broadcast Toasts**, **JSON Timeline Export**, **66 / 66 Unit Tests Passing** |
 | **Milestone 12** | Interactive Web Dashboard & Polished Demonstration | **COMPLETED** | **Glassmorphic Web App**, Universal H.264 MP4 streaming, Live drag-and-drop match report |
+
+---
+
+## Milestone 11 Details: Basic Football Event Recognition (Completed)
+
+### 1. What We Built
+- **`src/analytics/events.py`**:
+  - `MatchEvent`: Structured representation of discrete events (`event_id`, `event_type`, `frame_idx`, `timestamp_s`, `team_id`, `team_name`, `primary_player_id`, `secondary_player_id`, `start_pos_m`, `end_pos_m`, `speed_kmh`, `distance_m`, `is_successful`, `description`, `details`).
+  - `EventSummary`: Cumulative summary containing total events, pass counts & pass accuracy % per team, shots on goal, defensive interceptions, 1v1 duel tackles, total turnovers, and chronological match timeline.
+  - `EventDetector`:
+    - **Spatial-Temporal Finite State Machine (FSM)**: Tracks possession release ($v \ge 12\text{ km/h}$), ballistic flight vectors, and target acquisitions.
+    - **Pass Completion Engine**: Detects completed passes between teammates ($T_1 \to T_1$, $d \ge 3.0\text{m}$) and calculates pass length and flight velocity.
+    - **Interception Classifier**: Detects opponent pass cut-offs ($T_1 \to T_2$, $d \ge 3.0\text{m}$) where ball is intercepted mid-flight.
+    - **Shot on Goal Classifier**: Detects attacking strikes in the final third ($X \ge 85\text{m}$ or $X \le 20\text{m}$, $Y \in [20, 48]\text{m}$, $v \ge 36\text{ km/h}$) targeted towards the goalmouth.
+    - **Defensive Tackles & Contested Duels**: Detects close-quarters 1v1 possession transitions ($\Delta t \le 6\text{ frames}$, without free flight).
+    - **Real-Time Broadcast HUD Toast Alert**: Maintains active event toast for 40 frames ($~1.6\text{s}$) with automatic expiration.
+- **`src/visualization/annotator.py`**:
+  - Added `draw_event_toast(frame, active_event)`: Renders glowing glassmorphic event notification pill beneath the top HUD with color-coded event badges (Emerald: Pass, Rose: Shot, Amber: Interception, Purple: Tackle).
+- **`main.py` & `app.py`**:
+  - Added `--no-events` CLI flag.
+  - Integrates `EventDetector` in the main frame loop.
+  - Generates comprehensive event summary in terminal and saves JSON export to `outputs/logs/<name>_match_events.json`.
+  - Added event timeline payload to web app API.
+- **`web/` (`index.html`, `styles.css`, `app.js`)**:
+  - Added **Match Events Detected** KPI Card to the dashboard grid.
+  - Added **Match Event Feed & Timeline** card with dynamic tabular feed, color badges, and speed/distance metrics.
+- **`tests/test_events.py`**:
+  - 8 automated unit tests covering pass completion, interception, shots on goal, tackle duels, dribbles, toast banner expiration, and summary aggregation. Complete test suite: **66 / 66 tests passing**.
 
 ---
 

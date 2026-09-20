@@ -24,6 +24,7 @@ import cv2
 import numpy as np
 
 from src.analytics.speed_distance import SpeedEstimator
+from src.analytics.events import EventDetector
 from src.calibration.homography import PitchHomography
 from src.calibration.camera_motion import CameraMotionCompensator
 from src.detection.detector import PlayerDetector
@@ -87,6 +88,7 @@ def run_pipeline_task(task_id: str, payload: dict):
         camera_compensator = CameraMotionCompensator()
         cut_detector = CameraCutDetector()
         reid = PlayerReID()
+        event_detector = EventDetector(fps=fps)
         pitch_detector = PitchDetector()
         tracker = PlayerTracker(frame_rate=int(fps))
         ball_tracker = BallTracker(fps=fps)
@@ -202,6 +204,16 @@ def run_pipeline_task(task_id: str, payload: dict):
             )
             last_possession = possession_res
 
+            # Discrete Match Event Recognition (Milestone 11)
+            event_detector.update(
+                ball_state=ball_state,
+                possession_result=possession_res,
+                player_positions_m=pos_m if len(pos_m) > 0 else None,
+                player_track_ids=players.tracker_ids if hasattr(players, "tracker_ids") else None,
+                player_team_ids=player_team_ids,
+                frame_idx=frame_idx,
+            )
+
             ball_m = ball_state.position_m if ball_state is not None else None
 
             annotated = annotator.annotate(
@@ -216,6 +228,7 @@ def run_pipeline_task(task_id: str, payload: dict):
                 camera_motion=camera_motion,
                 cut_result=cut_res,
                 reid_count=reid.total_reassignments,
+                active_event=event_detector.active_event,
                 ball_trail=ball_tracker.trail,
                 fps=round(1.0 / max(0.001, time.time() - t_frame_start), 1),
                 frame_idx=frame_idx + 1,
@@ -261,6 +274,8 @@ def run_pipeline_task(task_id: str, payload: dict):
         if last_possession and last_possession.player_possession_counts:
             top_carrier = max(last_possession.player_possession_counts.items(), key=lambda x: x[1])[0]
 
+        ev_sum = event_detector.get_summary()
+
         final_results = {
             "output_video": out_video_path,
             "total_frames": total_frames,
@@ -270,6 +285,16 @@ def run_pipeline_task(task_id: str, payload: dict):
             "camera_cuts": len(cut_frames),
             "cut_frames": cut_frames,
             "reid_reassignments": reid.total_reassignments,
+            "total_events": ev_sum.total_events,
+            "team_a_passes": f"{ev_sum.completed_passes_a}/{ev_sum.total_passes_a} ({ev_sum.pass_accuracy_a_pct}%)",
+            "team_b_passes": f"{ev_sum.completed_passes_b}/{ev_sum.total_passes_b} ({ev_sum.pass_accuracy_b_pct}%)",
+            "team_a_shots": ev_sum.total_shots_a,
+            "team_b_shots": ev_sum.total_shots_b,
+            "team_a_interceptions": ev_sum.total_interceptions_a,
+            "team_b_interceptions": ev_sum.total_interceptions_b,
+            "team_a_tackles": ev_sum.total_tackles_a,
+            "team_b_tackles": ev_sum.total_tackles_b,
+            "events_timeline": ev_sum.events_timeline,
             "team_a_dominance": round(float(np.mean(team_a_control_list)), 1) if team_a_control_list else 59.0,
             "team_b_dominance": round(float(np.mean(team_b_control_list)), 1) if team_b_control_list else 41.0,
             "team_a_possession": last_possession.team_a_possession_pct if last_possession else 58.0,

@@ -152,6 +152,17 @@
 
             <div class="toggle-item">
               <div class="toggle-info">
+                <h5>Match Event Recognition</h5>
+                <p>Passes, shots on goal, interceptions & duel tackles</p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="cfg-events" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div class="toggle-item">
+              <div class="toggle-info">
                 <h5>CLAHE Luminance Enhancement</h5>
                 <p>Adaptive contrast equalization for stadium lighting</p>
               </div>
@@ -264,6 +275,12 @@
           <div class="kpi-subtext" id="kpi-top-carrier">Top Carrier: Player #19</div>
         </div>
 
+        <div class="kpi-card emerald">
+          <div class="kpi-label">Match Events Detected</div>
+          <div class="kpi-value" id="kpi-events-count">0 Events</div>
+          <div class="kpi-subtext" id="kpi-events-subtext">Passes, Shots & Duels</div>
+        </div>
+
         <div class="kpi-card amber">
           <div class="kpi-label">Peak Sprint Recorded</div>
           <div class="kpi-value" id="kpi-top-speed">38.0 km/h</div>
@@ -328,6 +345,39 @@
             <!-- Dynamically populated via app.js -->
           </tbody>
         </table>
+      </div>
+
+      <!-- BOTTOM: Match Events Feed & Timeline (Milestone 11) -->
+      <div class="glass-card table-card" style="margin-top: 24px;">
+        <div class="table-header-box">
+          <div>
+            <h3>Match Event Feed & Discrete Actions</h3>
+            <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Automated spatial-temporal trajectory classification (Passes, Shots, Interceptions, Tackles)</p>
+          </div>
+          <div class="event-summary-badges" id="event-summary-badges">
+            <span class="badge badge-pass" id="badge-pass-count">0 Passes</span>
+            <span class="badge badge-shot" id="badge-shot-count">0 Shots</span>
+            <span class="badge badge-interception" id="badge-interception-count">0 Interceptions</span>
+            <span class="badge badge-tackle" id="badge-tackle-count">0 Tackles</span>
+          </div>
+        </div>
+        <div class="events-scroll-container">
+          <table class="custom-table" id="events-table">
+            <thead>
+              <tr>
+                <th>Timestamp / Frame</th>
+                <th>Event Type</th>
+                <th>Team</th>
+                <th>Involved Player(s)</th>
+                <th>Event Details</th>
+                <th>Ball Speed</th>
+              </tr>
+            </thead>
+            <tbody id="events-body">
+              <!-- Dynamically populated via app.js -->
+            </tbody>
+          </table>
+        </div>
       </div>
     </section>
 

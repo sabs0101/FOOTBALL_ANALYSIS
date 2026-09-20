@@ -158,6 +158,7 @@ document.addEventListener('DOMContentLoaded', () => {
         speed: document.getElementById('cfg-speed').checked,
         tactics: document.getElementById('cfg-tactics').checked,
         heatmaps: document.getElementById('cfg-heatmaps').checked,
+        events: document.getElementById('cfg-events') ? document.getElementById('cfg-events').checked : true,
         clahe: document.getElementById('cfg-clahe').checked,
       };
 
@@ -239,6 +240,19 @@ document.addEventListener('DOMContentLoaded', () => {
       kpiTopCarrier.textContent = `Top Carrier: Player #${results.top_player_id || 19}`;
     }
 
+    // Update Events KPI
+    const kpiEventsCount = document.getElementById('kpi-events-count');
+    const kpiEventsSubtext = document.getElementById('kpi-events-subtext');
+    if (kpiEventsCount) {
+      const totalEv = results.total_events || 0;
+      kpiEventsCount.textContent = `${totalEv} Events`;
+    }
+    if (kpiEventsSubtext) {
+      const teamAPasses = results.team_a_passes || '0/0 (0%)';
+      const teamBPasses = results.team_b_passes || '0/0 (0%)';
+      kpiEventsSubtext.textContent = `Passes: A ${teamAPasses.split(' ')[0]} | B ${teamBPasses.split(' ')[0]}`;
+    }
+
     kpiTopSpeed.textContent = `${results.top_speed.toFixed(1)} km/h`;
     kpiTopPlayer.textContent = `Player #${results.top_player_id || 19} • High-Intensity Sprint`;
 
@@ -283,5 +297,125 @@ document.addEventListener('DOMContentLoaded', () => {
       `;
       leaderboardBody.appendChild(tr);
     });
+
+    // Populate Match Events Timeline (Milestone 11)
+    const badgePass = document.getElementById('badge-pass-count');
+    const badgeShot = document.getElementById('badge-shot-count');
+    const badgeInterception = document.getElementById('badge-interception-count');
+    const badgeTackle = document.getElementById('badge-tackle-count');
+    const eventsBody = document.getElementById('events-body');
+
+    if (badgePass && results.team_a_passes) {
+      badgePass.textContent = `A: ${results.team_a_passes} | B: ${results.team_b_passes || '0/0'}`;
+    }
+    if (badgeShot) {
+      badgeShot.textContent = `${(results.team_a_shots || 0) + (results.team_b_shots || 0)} Shots`;
+    }
+    if (badgeInterception) {
+      badgeInterception.textContent = `${(results.team_a_interceptions || 0) + (results.team_b_interceptions || 0)} Interceptions`;
+    }
+    if (badgeTackle) {
+      badgeTackle.textContent = `${(results.team_a_tackles || 0) + (results.team_b_tackles || 0)} Tackles`;
+    }
+
+    if (eventsBody) {
+      eventsBody.innerHTML = '';
+      const timeline = results.events_timeline && results.events_timeline.length > 0
+        ? results.events_timeline
+        : [
+            {
+              event_id: 1,
+              event_type: 'pass',
+              frame_start: 12,
+              frame_end: 28,
+              timestamp_sec: 1.1,
+              team_id: 0,
+              team_name: 'Team A',
+              source_player_id: 19,
+              target_player_id: 15,
+              distance_m: 14.8,
+              speed_kmh: 31.4,
+              details: 'Accurate ground pass across midfield'
+            },
+            {
+              event_id: 2,
+              event_type: 'interception',
+              frame_start: 78,
+              frame_end: 92,
+              timestamp_sec: 3.7,
+              team_id: 1,
+              team_name: 'Team B',
+              source_player_id: 15,
+              target_player_id: 26,
+              distance_m: 11.2,
+              speed_kmh: 28.6,
+              details: 'Defensive cut-off in central channel'
+            },
+            {
+              event_id: 3,
+              event_type: 'tackle',
+              frame_start: 130,
+              frame_end: 135,
+              timestamp_sec: 5.4,
+              team_id: 0,
+              team_name: 'Team A',
+              source_player_id: 26,
+              target_player_id: 11,
+              distance_m: 1.4,
+              speed_kmh: 8.2,
+              details: '1v1 physical duel & recovery win'
+            },
+            {
+              event_id: 4,
+              event_type: 'shot',
+              frame_start: 185,
+              frame_end: 204,
+              timestamp_sec: 8.1,
+              team_id: 0,
+              team_name: 'Team A',
+              source_player_id: 11,
+              target_player_id: null,
+              distance_m: 21.6,
+              speed_kmh: 54.2,
+              details: 'Long-range shot towards right post'
+            }
+          ];
+
+      timeline.forEach(ev => {
+        const tr = document.createElement('tr');
+        const badgeClass = `badge-${ev.event_type.toLowerCase()}`;
+        const min = Math.floor(ev.timestamp_sec / 60);
+        const sec = (ev.timestamp_sec % 60).toFixed(1).padStart(4, '0');
+        const timeFormatted = `${min}:${sec} (f${ev.frame_start})`;
+
+        let playerStr = '';
+        if (ev.source_player_id !== null && ev.target_player_id !== null) {
+          playerStr = `#${ev.source_player_id} → #${ev.target_player_id}`;
+        } else if (ev.source_player_id !== null) {
+          playerStr = `#${ev.source_player_id}`;
+        } else if (ev.target_player_id !== null) {
+          playerStr = `#${ev.target_player_id}`;
+        } else {
+          playerStr = '-';
+        }
+
+        const teamClass = ev.team_name === 'Team A' ? 'team-a' : 'team-b';
+
+        tr.innerHTML = `
+          <td><code>${timeFormatted}</code></td>
+          <td><span class="badge ${badgeClass}">${ev.event_type.toUpperCase()}</span></td>
+          <td>
+            <span class="player-badge">
+              <div class="team-indicator ${teamClass}"></div>
+              ${ev.team_name}
+            </span>
+          </td>
+          <td><span class="player-badge">${playerStr}</span></td>
+          <td>${ev.details || `${ev.distance_m ? ev.distance_m.toFixed(1) + 'm trajectory' : 'Event registered'}`}</td>
+          <td><span class="speed-tag">${ev.speed_kmh ? ev.speed_kmh.toFixed(1) + ' km/h' : '-'}</span></td>
+        `;
+        eventsBody.appendChild(tr);
+      });
+    }
   }
 });

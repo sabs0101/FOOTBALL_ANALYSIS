@@ -657,12 +657,12 @@ input:checked + .slider:before {
 /* KPI Cards Grid */
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 16px;
   margin-bottom: 28px;
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 1400px) {
   .kpi-grid {
     grid-template-columns: repeat(3, 1fr);
   }
@@ -693,6 +693,7 @@ input:checked + .slider:before {
   background: var(--accent-emerald);
 }
 
+.kpi-card.emerald::before { background: var(--accent-emerald); }
 .kpi-card.cyan::before { background: var(--accent-cyan); }
 .kpi-card.amber::before { background: var(--accent-amber); }
 .kpi-card.purple::before { background: var(--accent-purple); }
@@ -920,3 +921,65 @@ input:checked + .slider:before {
   background: rgba(255, 59, 105, 0.15);
   color: var(--accent-rose);
 }
+
+/* Event Feed & Timeline Styles */
+.event-summary-badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.badge-pass {
+  background: rgba(0, 229, 153, 0.15);
+  color: var(--accent-emerald);
+  border: 1px solid rgba(0, 229, 153, 0.3);
+}
+
+.badge-shot {
+  background: rgba(255, 59, 105, 0.15);
+  color: var(--accent-rose);
+  border: 1px solid rgba(255, 59, 105, 0.3);
+}
+
+.badge-interception {
+  background: rgba(255, 184, 0, 0.15);
+  color: var(--accent-amber);
+  border: 1px solid rgba(255, 184, 0, 0.3);
+}
+
+.badge-tackle {
+  background: rgba(168, 85, 247, 0.15);
+  color: var(--accent-purple);
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+.badge-turnover {
+  background: rgba(0, 180, 216, 0.15);
+  color: var(--accent-cyan);
+  border: 1px solid rgba(0, 180, 216, 0.3);
+}
+
+.events-scroll-container {
+  max-height: 380px;
+  overflow-y: auto;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.events-scroll-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.events-scroll-container::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.events-scroll-container::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.events-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-emerald);
+}
+
