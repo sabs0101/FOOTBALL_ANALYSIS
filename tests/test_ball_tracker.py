@@ -181,3 +181,25 @@ def test_contested_ball_detection():
     )
     assert possession_res.is_contested
     assert possession_res.possessing_team_name == "Contested 50-50"
+
+
+def test_possession_array_bounds_safety():
+    """Test that possession assignment gracefully handles when non-player detections or mismatch arrays are passed."""
+    tracker = BallTracker(fps=25.0, possession_radius_m=2.0)
+
+    # 26 positions (e.g. 25 players + 1 referee), but only 25 player track/team IDs
+    positions = np.zeros((26, 2), dtype=np.float32)
+    positions[25] = [50.0, 30.0]  # Closest to ball is index 25 (e.g. non-player)
+    player_track_ids = np.arange(25, dtype=int)
+    player_team_ids = np.zeros(25, dtype=int)
+
+    mock_state = BallState(frame_idx=0, position_m=(50.0, 30.0), center_px=(500, 500))
+    # Should not raise IndexError: index 25 is out of bounds for axis 0 with size 25
+    possession_res = tracker._assign_possession(
+        mock_state,
+        positions,
+        player_track_ids,
+        player_team_ids,
+        frame_idx=0,
+    )
+    assert possession_res is not None

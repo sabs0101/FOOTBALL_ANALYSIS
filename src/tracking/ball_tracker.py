@@ -402,16 +402,18 @@ class BallTracker:
             min_dist = float(dists[closest_idx])
 
             if min_dist <= self.possession_radius_m:
-                candidate_player_id = int(player_track_ids[closest_idx])
-                candidate_team_id = int(player_team_ids[closest_idx])
+                if closest_idx < len(player_track_ids) and closest_idx < len(player_team_ids):
+                    candidate_player_id = int(player_track_ids[closest_idx])
+                    candidate_team_id = int(player_team_ids[closest_idx])
 
-                # Check contest: second closest player is from opposing team and within contested threshold
-                if len(sorted_indices) > 1:
-                    second_idx = sorted_indices[1]
-                    second_dist = float(dists[second_idx])
-                    second_team = int(player_team_ids[second_idx])
-                    if second_team != candidate_team_id and (second_dist <= self.possession_radius_m + 0.40):
-                        is_contested = True
+                    # Check contest: second closest player is from opposing team and within contested threshold
+                    if len(sorted_indices) > 1:
+                        second_idx = sorted_indices[1]
+                        second_dist = float(dists[second_idx])
+                        if second_idx < len(player_team_ids):
+                            second_team = int(player_team_ids[second_idx])
+                            if second_team != candidate_team_id and (second_dist <= self.possession_radius_m + 0.40):
+                                is_contested = True
 
         # Hysteresis & Debouncing logic
         if candidate_player_id is not None:

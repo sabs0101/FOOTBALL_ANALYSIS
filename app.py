@@ -170,39 +170,44 @@ def run_pipeline_task(task_id: str, payload: dict):
             num_players = len(players.xyxy)
             player_counts.append(num_players)
 
-            # Coordinates & Speed
-            tids = getattr(tracked, "tracker_ids", None)
+            # Player coordinates & metric speed kinematics
             feet = tracked.get_foot_positions()
             pos_m = calibrator.image_to_pitch(feet, H_matrix)
 
+            player_indices = np.where(tracked.class_ids == 0)[0]
+            player_positions_m = pos_m[player_indices] if (len(pos_m) > 0 and len(player_indices) > 0) else np.empty((0, 2), dtype=np.float32)
+            player_tids = players.tracker_ids if (hasattr(players, "tracker_ids") and players.tracker_ids is not None) else None
+
+            # Team Classification & Role Assignment
+            team_res = team_classifier.classify_frame(frame, tracked, pos_m)
+            player_team_ids = None
+            if team_res is not None and len(player_indices) > 0:
+                player_team_ids = team_res.team_ids[player_indices] if len(team_res.team_ids) >= len(tracked) else team_res.team_ids
+            else:
+                player_team_ids = np.empty((0,), dtype=int)
+
             player_metrics = {}
-            if tids is not None and len(pos_m) > 0:
-                player_metrics = speed_estimator.update(tids, pos_m, frame_idx=frame_idx)
+            if player_tids is not None and len(player_positions_m) > 0 and len(player_tids) == len(player_positions_m):
+                player_metrics = speed_estimator.update(player_tids, player_positions_m, frame_idx=frame_idx)
                 for pm in player_metrics.values():
                     if pm.current_speed_kmh >= 2.0:
                         all_speeds.append(pm.current_speed_kmh)
 
-            # Team & Spatial Tactics
-            team_res = team_classifier.classify_frame(frame, tracked, pos_m)
-            player_team_ids = None
-            if team_res is not None:
-                player_indices = np.where(tracked.class_ids == 0)[0]
-                player_team_ids = team_res.team_ids[player_indices] if len(player_indices) > 0 else np.empty((0,), dtype=int)
-
-            spatial_res = spatial_control.analyze_frame(pos_m, team_res.team_ids)
+            # Tactical Spatial Control & Heatmaps
+            spatial_res = spatial_control.analyze_frame(player_positions_m, player_team_ids)
             team_a_control_list.append(spatial_res.team_a_control_pct)
             team_b_control_list.append(spatial_res.team_b_control_pct)
 
-            if enable_heatmaps and tids is not None:
-                heatmap_gen.add_positions(tids, pos_m, team_res.team_ids)
+            if enable_heatmaps and player_tids is not None and len(player_positions_m) > 0 and len(player_tids) == len(player_positions_m):
+                heatmap_gen.add_positions(player_tids, player_positions_m, player_team_ids)
 
             # Ball Tracking, Smoothing & Possession
             ball_state, possession_res = ball_tracker.update(
                 detections=tracked,
                 homography_matrix=H_matrix,
-                player_positions_m=pos_m if len(pos_m) > 0 else None,
-                player_track_ids=players.tracker_ids if hasattr(players, "tracker_ids") else None,
-                player_team_ids=player_team_ids,
+                player_positions_m=player_positions_m if len(player_positions_m) > 0 else None,
+                player_track_ids=player_tids if (player_tids is not None and len(player_tids) > 0) else None,
+                player_team_ids=player_team_ids if (player_team_ids is not None and len(player_team_ids) > 0) else None,
                 frame_idx=frame_idx,
             )
             last_possession = possession_res
@@ -212,9 +217,9 @@ def run_pipeline_task(task_id: str, payload: dict):
                 event_detector.update(
                     ball_state=ball_state,
                     possession_result=possession_res,
-                    player_positions_m=pos_m if len(pos_m) > 0 else None,
-                    player_track_ids=players.tracker_ids if hasattr(players, "tracker_ids") else None,
-                    player_team_ids=player_team_ids,
+                    player_positions_m=player_positions_m if len(player_positions_m) > 0 else None,
+                    player_track_ids=player_tids if (player_tids is not None and len(player_tids) > 0) else None,
+                    player_team_ids=player_team_ids if (player_team_ids is not None and len(player_team_ids) > 0) else None,
                     frame_idx=frame_idx,
                 )
 
@@ -240,12 +245,11 @@ def run_pipeline_task(task_id: str, payload: dict):
                 device_name="RTX 4050 (CUDA)",
             )
 
-            if tactical_radar is not None and len(pos_m) > 0:
-                player_indices = np.where(tracked.class_ids == 0)[0]
+            if tactical_radar is not None and len(player_positions_m) > 0:
                 player_team_colors = [team_res.team_colors[idx] for idx in player_indices if idx < len(team_res.team_colors)] if team_res else None
                 radar_img = tactical_radar.render_radar(
-                    player_positions_m=pos_m,
-                    player_track_ids=players.tracker_ids if hasattr(players, "tracker_ids") else None,
+                    player_positions_m=player_positions_m,
+                    player_track_ids=player_tids,
                     ball_position_m=ball_m,
                     team_colors=player_team_colors,
                     tactical_spatial_result=spatial_res,
