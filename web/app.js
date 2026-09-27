@@ -997,6 +997,14 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
 
+  // Helper to update loading / status message safely
+  function updatePipelineStatusText(msg) {
+    const streamLoadingText = document.getElementById('stream-loading-text');
+    if (streamLoadingText) streamLoadingText.textContent = msg;
+    const liveMatchSub = document.getElementById('live-match-sub');
+    if (liveMatchSub) liveMatchSub.textContent = msg;
+  }
+
   // Launch AI Pipeline
   btnProcess.addEventListener('click', async () => {
     btnProcess.disabled = true;
@@ -1007,7 +1015,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Handle file upload if user dropped custom video
       if (uploadedFile) {
-        document.getElementById('progress-status-text').textContent = 'Uploading Video File...';
+        updatePipelineStatusText('Uploading Video File...');
         const formData = new FormData();
         formData.append('video', uploadedFile);
 
@@ -1023,20 +1031,26 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
 
-      // Collect user options
-      const payload = {
-        source: videoPathToProcess,
-        radar: document.getElementById('cfg-radar').checked,
-        speed: document.getElementById('cfg-speed').checked,
-        tactics: document.getElementById('cfg-tactics').checked,
-        heatmaps: document.getElementById('cfg-heatmaps').checked,
-        cmc: document.getElementById('cfg-cmc').checked,
-        reid: document.getElementById('cfg-reid').checked,
-        events: document.getElementById('cfg-events').checked,
-        clahe: document.getElementById('cfg-clahe').checked,
+      // Collect user options safely with fallback defaults
+      const getChecked = (id, defVal = true) => {
+        const el = document.getElementById(id);
+        return el ? el.checked : defVal;
       };
 
-      document.getElementById('progress-status-text').textContent = 'Starting AI Tactical Pipeline...';
+      const payload = {
+        source: videoPathToProcess,
+        radar: getChecked('cfg-radar', true),
+        speed: getChecked('cfg-speed', true),
+        tactics: getChecked('cfg-tactics', true),
+        heatmaps: getChecked('cfg-heatmaps', true),
+        cmc: getChecked('cfg-cmc', true),
+        reid: getChecked('cfg-reid', true),
+        events: getChecked('cfg-events', true),
+        clahe: getChecked('cfg-clahe', true),
+        ball_track: getChecked('cfg-ball', true),
+      };
+
+      updatePipelineStatusText('Starting AI Tactical Pipeline...');
 
       const procRes = await fetch('/api/process', {
         method: 'POST',
@@ -1057,6 +1071,7 @@ document.addEventListener('DOMContentLoaded', () => {
       btnProcess.disabled = false;
     }
   });
+
 
   // Polling Progress and Live Streaming Endpoint
   function startPollingProgress(taskId) {
@@ -1107,15 +1122,16 @@ document.addEventListener('DOMContentLoaded', () => {
           const tot = data.total_frames || 1;
           const pct = Math.min(100, Math.round((cur / tot) * 100));
 
-          progressPct.textContent = `${pct}% Complete`;
-          progressBar.style.width = `${pct}%`;
-          metricFrameCount.textContent = `${cur} / ${tot}`;
-          metricFps.textContent = `⚡ ${data.fps ? data.fps.toFixed(1) : '0.0'} FPS`;
+          if (progressPct) progressPct.textContent = `${pct}% Complete`;
+          if (progressBar) progressBar.style.width = `${pct}%`;
+          if (metricFrameCount) metricFrameCount.textContent = `${cur} / ${tot}`;
+          if (metricFps) metricFps.textContent = `⚡ ${data.fps ? data.fps.toFixed(1) : '0.0'} FPS`;
 
           const telem = data.telemetry || {};
-          if (telem.players) {
+          if (metricPlayers && telem.players) {
             metricPlayers.textContent = telem.players.length;
           }
+
 
           // Update Tactical Space Dominance
           if (telem.tactics) {
@@ -1200,9 +1216,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } else if (data.status === 'completed') {
           clearInterval(pollInterval);
-          progressPct.textContent = '100% Complete';
-          progressBar.style.width = '100%';
-          btnProcess.disabled = false;
+          if (progressPct) progressPct.textContent = '100% Complete';
+          if (progressBar) progressBar.style.width = '100%';
+          if (btnProcess) btnProcess.disabled = false;
+
 
           // Fetch full progress payload with final results
           const fullRes = await fetch(`/api/progress?task_id=${taskId}`);
