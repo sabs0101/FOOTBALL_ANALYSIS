@@ -143,6 +143,30 @@
             Tactical Analysis Features
           </h3>
 
+          <!-- AI Speed Mode Selection -->
+          <div class="speed-mode-box" style="margin-bottom: 20px; padding: 14px; background: rgba(0, 229, 153, 0.05); border: 1px solid rgba(0, 229, 153, 0.2); border-radius: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <span style="font-size: 13px; font-weight: 600; color: var(--accent-emerald); display: flex; align-items: center; gap: 6px;">
+                ⚡ Neural Acceleration & Inference Throughput
+              </span>
+              <span id="speed-mode-indicator" class="badge badge-cuda" style="font-size: 11px;">🚀 High Speed (35-50 FPS)</span>
+            </div>
+            <div class="speed-pills-container" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+              <button type="button" class="speed-pill" data-interval="4" style="padding: 8px; border-radius: 8px; background: var(--bg-surface); border: 1px solid var(--border-subtle); color: var(--text-secondary); font-size: 11px; cursor: pointer; text-align: center; transition: all 0.2s;">
+                <strong style="display:block; color: var(--text-primary);">⚡ Turbo</strong>
+                <span>60+ FPS</span>
+              </button>
+              <button type="button" class="speed-pill active" data-interval="3" style="padding: 8px; border-radius: 8px; background: rgba(0, 229, 153, 0.15); border: 1px solid var(--accent-emerald); color: var(--accent-emerald); font-size: 11px; cursor: pointer; text-align: center; transition: all 0.2s;">
+                <strong style="display:block; color: var(--accent-emerald);">🚀 High Speed</strong>
+                <span>35-50 FPS</span>
+              </button>
+              <button type="button" class="speed-pill" data-interval="1" style="padding: 8px; border-radius: 8px; background: var(--bg-surface); border: 1px solid var(--border-subtle); color: var(--text-secondary); font-size: 11px; cursor: pointer; text-align: center; transition: all 0.2s;">
+                <strong style="display:block; color: var(--text-primary);">🔬 Precision</strong>
+                <span>20-30 FPS</span>
+              </button>
+            </div>
+          </div>
+
           <div class="toggle-group">
             <div class="toggle-item">
               <div class="toggle-info">

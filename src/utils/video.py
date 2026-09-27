@@ -93,10 +93,14 @@ class VideoReader:
             self.cap.release()
 
 
+import queue
+import threading
+
+
 class VideoWriter:
     """
-    High-performance Video writer utility that encodes broadcast-ready H.264 MP4
-    with universal HTML5 browser playback support (PyAV + OpenCV fallback).
+    High-performance Asynchronous Video writer utility that encodes broadcast-ready H.264 MP4
+    in a dedicated background thread with zero-blocking egress (PyAV + OpenCV fallback).
     """
 
     def __init__(
@@ -106,6 +110,7 @@ class VideoWriter:
         width: int,
         height: int,
         codec: str = "h264",
+        queue_size: int = 64,
     ):
         self.output_path = Path(output_path)
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -120,12 +125,13 @@ class VideoWriter:
 
         try:
             import av
+            self.av = av
             self.av_container = av.open(str(self.output_path), mode="w")
             self.av_stream = self.av_container.add_stream("h264", rate=int(round(fps)))
             self.av_stream.width = width
             self.av_stream.height = height
             self.av_stream.pix_fmt = "yuv420p"
-            self.av_stream.options = {"crf": "21", "preset": "veryfast"}
+            self.av_stream.options = {"crf": "22", "preset": "ultrafast", "tune": "zerolatency"}
             self.use_av = True
         except Exception:
             fourcc_code = "avc1" if codec == "h264" else codec
@@ -135,6 +141,32 @@ class VideoWriter:
                 fourcc = cv2.VideoWriter_fourcc(*"mp4v")
                 self.cv_writer = cv2.VideoWriter(str(self.output_path), fourcc, fps, (width, height))
 
+        # Asynchronous frame writing thread
+        self._write_queue: queue.Queue = queue.Queue(maxsize=queue_size)
+        self._write_thread = threading.Thread(target=self._writer_loop, name=f"Writer-{self.output_path.stem}", daemon=True)
+        self._write_thread.start()
+
+    def _writer_loop(self):
+        """Dedicated background loop for non-blocking disk video encoding."""
+        while True:
+            frame = self._write_queue.get()
+            if frame is None:
+                break
+            try:
+                if frame.shape[1] != self.width or frame.shape[0] != self.height:
+                    frame = cv2.resize(frame, (self.width, self.height))
+
+                if self.use_av and self.av_container is not None:
+                    av_frame = self.av.VideoFrame.from_ndarray(frame, format="bgr24")
+                    for packet in self.av_stream.encode(av_frame):
+                        self.av_container.mux(packet)
+                elif self.cv_writer is not None:
+                    self.cv_writer.write(frame)
+            except Exception:
+                pass
+            finally:
+                self._write_queue.task_done()
+
     def __enter__(self):
         return self
 
@@ -142,19 +174,24 @@ class VideoWriter:
         self.release()
 
     def write(self, frame: np.ndarray):
-        if frame.shape[1] != self.width or frame.shape[0] != self.height:
-            frame = cv2.resize(frame, (self.width, self.height))
-
-        if self.use_av and self.av_container is not None:
-            import av
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            av_frame = av.VideoFrame.from_ndarray(rgb, format="rgb24")
-            for packet in self.av_stream.encode(av_frame):
-                self.av_container.mux(packet)
-        elif self.cv_writer is not None:
-            self.cv_writer.write(frame)
+        """Enqueue frame for asynchronous background encoding."""
+        if frame is None:
+            return
+        try:
+            self._write_queue.put(frame, timeout=0.2)
+        except queue.Full:
+            pass
 
     def release(self):
+        """Flush remaining frames and finalize video file."""
+        if hasattr(self, "_write_queue") and self._write_queue is not None:
+            try:
+                self._write_queue.put(None, timeout=0.5)
+                if hasattr(self, "_write_thread") and self._write_thread is not None:
+                    self._write_thread.join(timeout=10.0)
+            except Exception:
+                pass
+
         if self.use_av and self.av_container is not None:
             try:
                 for packet in self.av_stream.encode():

@@ -94,23 +94,34 @@ def run_pipeline_task(task_id: str, payload: dict):
                 "error": None,
             }
 
+        last_jpeg_time = 0.0
+
         def on_frame_processed(frame_idx: int, telemetry: dict, frame_bgr: np.ndarray):
-            # Encode frame to JPEG for live MJPEG streaming
-            ret, jpeg = cv2.imencode(".jpg", frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 80])
-            if ret:
-                jpeg_bytes = jpeg.tobytes()
-                with TASKS_LOCK:
-                    if task_id in TASKS:
+            nonlocal last_jpeg_time
+            now = time.perf_counter()
+            # Throttle JPEG encode to ~30 FPS web streaming rate to prevent CPU blocking
+            should_encode = (now - last_jpeg_time >= 0.030) or (frame_idx == 0) or (frame_idx >= total_frames - 1)
+            
+            jpeg_bytes = None
+            if should_encode:
+                last_jpeg_time = now
+                ret, jpeg = cv2.imencode(".jpg", frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 75])
+                if ret:
+                    jpeg_bytes = jpeg.tobytes()
+
+            with TASKS_LOCK:
+                if task_id in TASKS:
+                    if jpeg_bytes is not None:
                         TASKS[task_id]["latest_jpeg"] = jpeg_bytes
                         TASKS[task_id]["latest_frame_idx"] = frame_idx
-                        TASKS[task_id]["latest_telemetry"] = telemetry
-                        TASKS[task_id]["current_frame"] = frame_idx + 1
-                        if telemetry.get("fps"):
-                            TASKS[task_id]["fps"] = float(telemetry["fps"])
-                        if telemetry.get("players"):
-                            TASKS[task_id]["player_count"] = len(telemetry["players"])
-                        if telemetry.get("event"):
-                            TASKS[task_id]["events_stream"].append(telemetry["event"])
+                    TASKS[task_id]["latest_telemetry"] = telemetry
+                    TASKS[task_id]["current_frame"] = frame_idx + 1
+                    if telemetry.get("fps"):
+                        TASKS[task_id]["fps"] = float(telemetry["fps"])
+                    if telemetry.get("players"):
+                        TASKS[task_id]["player_count"] = len(telemetry["players"])
+                    if telemetry.get("event"):
+                        TASKS[task_id]["events_stream"].append(telemetry["event"])
 
         def on_progress(current_frame: int, total_frames_count: int, cur_fps: float):
             with TASKS_LOCK:

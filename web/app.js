@@ -997,6 +997,45 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
 
+  // Speed Mode Selector
+  let selectedDetectorInterval = 3;
+  const speedPills = document.querySelectorAll('.speed-pill');
+  const speedModeIndicator = document.getElementById('speed-mode-indicator');
+
+  speedPills.forEach(pill => {
+    pill.addEventListener('click', () => {
+      speedPills.forEach(p => {
+        p.classList.remove('active');
+        p.style.background = 'var(--bg-surface)';
+        p.style.border = '1px solid var(--border-subtle)';
+        p.style.color = 'var(--text-secondary)';
+        const strong = p.querySelector('strong');
+        if (strong) strong.style.color = 'var(--text-primary)';
+      });
+
+      pill.classList.add('active');
+      pill.style.background = 'rgba(0, 229, 153, 0.15)';
+      pill.style.border = '1px solid var(--accent-emerald)';
+      pill.style.color = 'var(--accent-emerald)';
+      const strongActive = pill.querySelector('strong');
+      if (strongActive) strongActive.style.color = 'var(--accent-emerald)';
+
+      selectedDetectorInterval = parseInt(pill.getAttribute('data-interval') || '3', 10);
+      if (speedModeIndicator) {
+        if (selectedDetectorInterval >= 4) {
+          speedModeIndicator.textContent = '⚡ Turbo (60+ FPS)';
+          speedModeIndicator.className = 'badge badge-cuda';
+        } else if (selectedDetectorInterval === 3) {
+          speedModeIndicator.textContent = '🚀 High Speed (35-50 FPS)';
+          speedModeIndicator.className = 'badge badge-cuda';
+        } else {
+          speedModeIndicator.textContent = '🔬 Precision (20-30 FPS)';
+          speedModeIndicator.className = 'badge';
+        }
+      }
+    });
+  });
+
   // Helper to update loading / status message safely
   function updatePipelineStatusText(msg) {
     const streamLoadingText = document.getElementById('stream-loading-text');
@@ -1048,7 +1087,7 @@ document.addEventListener('DOMContentLoaded', () => {
         events: getChecked('cfg-events', true),
         clahe: getChecked('cfg-clahe', true),
         ball_track: getChecked('cfg-ball', true),
-        detector_interval: 2,
+        detector_interval: selectedDetectorInterval,
         sparse_gme: true,
         homography_interval: 25,
       };

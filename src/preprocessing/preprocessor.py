@@ -1,4 +1,4 @@
-﻿"""
+"""
 Video Frame Preprocessing and Enhancement Module for Football Analytics.
 Provides CLAHE contrast equalization, gamma correction, Gaussian/Bilateral denoising,
 and Laplacian motion blur detection.
@@ -64,8 +64,12 @@ class FramePreprocessor:
             self.gamma_table = None
 
     def calculate_blur(self, gray_frame: np.ndarray) -> float:
-        """Calculate image sharpness using the variance of the Laplacian operator."""
-        return float(cv2.Laplacian(gray_frame, cv2.CV_64F).var())
+        """Calculate image sharpness using fast downscaled Laplacian operator."""
+        if gray_frame.shape[0] > 360:
+            small_gray = cv2.resize(gray_frame, (480, 270), interpolation=cv2.INTER_NEAREST)
+        else:
+            small_gray = gray_frame
+        return float(cv2.Laplacian(small_gray, cv2.CV_16S).var())
 
     def process(self, frame: np.ndarray) -> PreprocessingResult:
         """
@@ -80,13 +84,14 @@ class FramePreprocessor:
         if self.target_resolution is not None:
             out = cv2.resize(out, self.target_resolution, interpolation=cv2.INTER_LINEAR)
 
-        # 2. Convert to LAB color space for luminance-only CLAHE (preserves true jersey colors)
+        # 2. High-speed luminance CLAHE in YCrCb color space (avoids expensive 3-channel split/merge)
         if self.enable_clahe:
-            lab = cv2.cvtColor(out, cv2.COLOR_BGR2LAB)
-            l_channel, a_channel, b_channel = cv2.split(lab)
-            l_channel = self.clahe.apply(l_channel)
-            lab = cv2.merge((l_channel, a_channel, b_channel))
-            out = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+            ycrcb = cv2.cvtColor(out, cv2.COLOR_BGR2YCrCb)
+            ycrcb[:, :, 0] = self.clahe.apply(ycrcb[:, :, 0])
+            gray = ycrcb[:, :, 0]
+            out = cv2.cvtColor(ycrcb, cv2.COLOR_YCrCb2BGR)
+        else:
+            gray = cv2.cvtColor(out, cv2.COLOR_BGR2GRAY)
 
         # 3. Gamma correction (if enabled for underexposed stadiums)
         if self.enable_gamma and self.gamma_table is not None:
@@ -98,8 +103,7 @@ class FramePreprocessor:
         elif self.denoise_method == "bilateral":
             out = cv2.bilateralFilter(out, d=5, sigmaColor=35, sigmaSpace=35)
 
-        # 5. Image quality & blur metric
-        gray = cv2.cvtColor(out, cv2.COLOR_BGR2GRAY)
+        # 5. Image quality & blur metric (computed on luminance)
         blur_score = self.calculate_blur(gray)
         is_blurry = blur_score < self.blur_threshold
         avg_brightness = float(np.mean(gray))

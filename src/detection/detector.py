@@ -146,6 +146,10 @@ class PlayerDetector:
             f"[Backend: {self.backend}, Device: {self.device}, FP16: {self.half}, imgsz: {self.imgsz}]"
         )
 
+        # Enable cuDNN autotuning for NVIDIA GPUs
+        if self.torch_device.type == "cuda":
+            torch.backends.cudnn.benchmark = True
+
         # Load Ultralytics YOLO model
         try:
             self.model = YOLO(str(self.model_path))
@@ -209,13 +213,14 @@ class PlayerDetector:
         """Run dummy inference to warm up GPU caches and TensorRT context."""
         try:
             dummy = np.zeros((720, 1280, 3), dtype=np.uint8)
-            for _ in range(iterations):
-                _ = self.model.predict(
-                    source=dummy,
-                    imgsz=self.imgsz,
-                    device=self.device,
-                    verbose=False,
-                )
+            with torch.inference_mode():
+                for _ in range(iterations):
+                    _ = self.model.predict(
+                        source=dummy,
+                        imgsz=self.imgsz,
+                        device=self.device,
+                        verbose=False,
+                    )
             if torch.cuda.is_available():
                 torch.cuda.synchronize()
         except Exception:
@@ -239,15 +244,16 @@ class PlayerDetector:
         h, w, _ = frame.shape
         min_conf = min(self.conf_threshold, self.conf_ball)
 
-        results = self.model.predict(
-            source=frame,
-            conf=min_conf,
-            iou=self.iou_threshold,
-            imgsz=self.imgsz,
-            device=self.device,
-            classes=self.filter_classes,
-            verbose=False,
-        )
+        with torch.inference_mode():
+            results = self.model.predict(
+                source=frame,
+                conf=min_conf,
+                iou=self.iou_threshold,
+                imgsz=self.imgsz,
+                device=self.device,
+                classes=self.filter_classes,
+                verbose=False,
+            )
 
         result = results[0]
         boxes = result.boxes.xyxy.cpu().numpy() if len(result.boxes) > 0 else np.empty((0, 4), dtype=np.float32)
@@ -303,15 +309,16 @@ class PlayerDetector:
             return []
 
         min_conf = min(self.conf_threshold, self.conf_ball)
-        results = self.model.predict(
-            source=frames,
-            conf=min_conf,
-            iou=self.iou_threshold,
-            imgsz=self.imgsz,
-            device=self.device,
-            classes=self.filter_classes,
-            verbose=False,
-        )
+        with torch.inference_mode():
+            results = self.model.predict(
+                source=frames,
+                conf=min_conf,
+                iou=self.iou_threshold,
+                imgsz=self.imgsz,
+                device=self.device,
+                classes=self.filter_classes,
+                verbose=False,
+            )
 
         batch_results = []
         names = self.model.names
