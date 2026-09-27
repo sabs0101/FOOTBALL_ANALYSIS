@@ -1,4 +1,4 @@
-﻿"""
+"""
 Football Pitch and Field Line Segmentation Module (Polished & Stabilized).
 Detects green pitch boundary mask with temporal EMA smoothing, and filters out
 crowd spectators, stadium stands, and dugout bench personnel while strictly
@@ -62,8 +62,30 @@ class PitchDetector:
 
     def get_pitch_mask(self, frame: np.ndarray) -> np.ndarray:
         """
-        Segment the green pitch using HSV color thresholding and morphological closing.
+        Segment the green pitch using fast HSV color thresholding and morphological closing.
         """
+        h, w = frame.shape[:2]
+        
+        # Fast path: downscale large broadcast frames for instant morphology
+        if w > 640:
+            scale = 480.0 / w
+            sh, sw = int(round(h * scale)), 480
+            small = cv2.resize(frame, (sw, sh), interpolation=cv2.INTER_NEAREST)
+            hsv = cv2.cvtColor(small, cv2.COLOR_BGR2HSV)
+            mask_small = cv2.inRange(hsv, self.hsv_lower, self.hsv_upper)
+            
+            k_close = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
+            k_open = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+            mask_small = cv2.morphologyEx(mask_small, cv2.MORPH_CLOSE, k_close)
+            mask_small = cv2.morphologyEx(mask_small, cv2.MORPH_OPEN, k_open)
+            
+            num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask_small)
+            if num_labels > 1:
+                largest_label = 1 + np.argmax(stats[1:, cv2.CC_STAT_AREA])
+                mask_small = np.where(labels == largest_label, 255, 0).astype(np.uint8)
+            
+            return cv2.resize(mask_small, (w, h), interpolation=cv2.INTER_NEAREST)
+
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         mask = cv2.inRange(hsv, self.hsv_lower, self.hsv_upper)
 
@@ -86,29 +108,48 @@ class PitchDetector:
         """
         Extract field line markings and dynamic pitch boundary with EMA smoothing.
         """
-        h, w, _ = frame.shape
+        h, w = frame.shape[:2]
         grass_mask = self.get_pitch_mask(frame)
 
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # Scale down for line extraction if HD
+        if w > 800:
+            scale_x = 800.0 / w
+            scale_y = (h * scale_x) / h
+            target_w = 800
+            target_h = int(round(h * scale_x))
+            small_frame = cv2.resize(frame, (target_w, target_h), interpolation=cv2.INTER_LINEAR)
+            small_grass = cv2.resize(grass_mask, (target_w, target_h), interpolation=cv2.INTER_NEAREST)
+            inv_sx = w / float(target_w)
+            inv_sy = h / float(target_h)
+        else:
+            small_frame = frame
+            small_grass = grass_mask
+            inv_sx = 1.0
+            inv_sy = 1.0
+
+        gray = cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY)
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
         # Top-hat morphological filter for white markings
-        tophat_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 9))
+        tophat_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
         tophat = cv2.morphologyEx(blurred, cv2.MORPH_TOPHAT, tophat_kernel)
 
         _, line_mask = cv2.threshold(
             tophat, self.white_contrast_thresh, 255, cv2.THRESH_BINARY
         )
-        line_mask = cv2.bitwise_and(line_mask, line_mask, mask=grass_mask)
+        line_mask = cv2.bitwise_and(line_mask, line_mask, mask=small_grass)
+
+        min_len = int(round(self.min_line_length * (small_frame.shape[1] / float(w))))
+        min_len = max(20, min_len)
 
         # Probabilistic Hough Line Transform
         lines = cv2.HoughLinesP(
             line_mask,
             rho=1,
             theta=np.pi / 180,
-            threshold=50,
-            minLineLength=self.min_line_length,
-            maxLineGap=self.max_line_gap,
+            threshold=40,
+            minLineLength=min_len,
+            maxLineGap=int(round(self.max_line_gap * (small_frame.shape[1] / float(w)))),
         )
 
         valid_lines = []
@@ -117,7 +158,10 @@ class PitchDetector:
             for l in lines:
                 pts = l[0] if len(l.shape) > 1 else l
                 if len(pts) >= 4:
-                    x1, y1, x2, y2 = int(pts[0]), int(pts[1]), int(pts[2]), int(pts[3])
+                    x1 = int(round(pts[0] * inv_sx))
+                    y1 = int(round(pts[1] * inv_sy))
+                    x2 = int(round(pts[2] * inv_sx))
+                    y2 = int(round(pts[3] * inv_sy))
                     dx, dy = abs(x2 - x1), abs(y2 - y1)
                     length = np.sqrt(dx ** 2 + dy ** 2)
                     angle = np.degrees(np.arctan2(dy, dx))

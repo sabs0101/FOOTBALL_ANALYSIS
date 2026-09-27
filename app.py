@@ -94,18 +94,35 @@ def run_pipeline_task(task_id: str, payload: dict):
                 "error": None,
             }
 
+        # Configure model and inference resolution dynamically based on selected acceleration mode
+        if detector_interval >= 4:
+            model_choice = "models/yolov8n.pt" if Path("models/yolov8n.pt").exists() else "yolov8n.pt"
+            imgsz_choice = 640
+        elif detector_interval >= 3:
+            model_choice = payload.get("model", "models/yolov8m.pt")
+            imgsz_choice = 640
+        else:
+            model_choice = payload.get("model", "models/yolov8m.pt")
+            imgsz_choice = int(payload.get("imgsz", 960))
+
         last_jpeg_time = 0.0
 
         def on_frame_processed(frame_idx: int, telemetry: dict, frame_bgr: np.ndarray):
             nonlocal last_jpeg_time
             now = time.perf_counter()
-            # Throttle JPEG encode to ~30 FPS web streaming rate to prevent CPU blocking
-            should_encode = (now - last_jpeg_time >= 0.030) or (frame_idx == 0) or (frame_idx >= total_frames - 1)
+            # Enable native 60 FPS streaming rate (~16ms interval)
+            min_interval = 0.016
+            should_encode = (now - last_jpeg_time >= min_interval) or (frame_idx == 0) or (frame_idx >= total_frames - 1)
             
             jpeg_bytes = None
             if should_encode:
                 last_jpeg_time = now
-                ret, jpeg = cv2.imencode(".jpg", frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 75])
+                h, w = frame_bgr.shape[:2]
+                if w > 1280:
+                    stream_frame = cv2.resize(frame_bgr, (1280, int(round(h * 1280.0 / w))), interpolation=cv2.INTER_LINEAR)
+                else:
+                    stream_frame = frame_bgr
+                ret, jpeg = cv2.imencode(".jpg", stream_frame, [cv2.IMWRITE_JPEG_QUALITY, 65])
                 if ret:
                     jpeg_bytes = jpeg.tobytes()
 
@@ -132,9 +149,9 @@ def run_pipeline_task(task_id: str, payload: dict):
                         TASKS[task_id]["player_count"] = len(TASKS[task_id]["latest_telemetry"]["players"])
 
         pipeline_opts = {
-            "model": "models/yolov8m.pt",
+            "model": model_choice,
             "conf": 0.18,
-            "imgsz": 1280,
+            "imgsz": imgsz_choice,
             "device": preferred_device,
             "clahe": enable_clahe,
             "cmc": enable_cmc,
@@ -334,7 +351,7 @@ class DashboardHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
                     if consecutive_idle > 5:
                         break
 
-                time.sleep(0.015)
+                time.sleep(0.003)
             return
 
         # 3. API: Live Telemetry JSON Stream (Milestone 16)

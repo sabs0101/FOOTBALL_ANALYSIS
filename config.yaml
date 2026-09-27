@@ -111,7 +111,7 @@ visualization:
   draw_speed: true            # Display live metric speed (km/h) on player badges
   draw_team: true             # Color-code by Team A vs Team B vs Referee
   draw_pitch_boundary: false  # Highlight pitch polygon boundary
-  draw_pitch_lines: true      # Highlight detected pitch field lines
+  draw_pitch_lines: false     # Highlight detected pitch field lines (disabled to eliminate visual clutter)
   box_thickness: 2
   text_scale: 0.5
   player_box_color: [0, 215, 255]     # Bright Gold/Amber in BGR

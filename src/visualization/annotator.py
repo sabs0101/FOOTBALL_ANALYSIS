@@ -176,10 +176,32 @@ class VideoAnnotator:
         tracker_ids: Optional[np.ndarray] = None,
     ) -> np.ndarray:
         """
-        Render smooth fading movement trajectories behind each player's feet.
+        Render clean, smooth fading movement trajectories behind active players' feet.
+        Eliminates visual noise, stationary jitter, and teleportation jump artifacts.
         """
+        active_set = set(tracker_ids.tolist()) if tracker_ids is not None else None
+
         for tid, points in trails.items():
+            # Only render trails for currently visible active players
+            if active_set is not None and tid not in active_set:
+                continue
+
             if len(points) < 2:
+                continue
+
+            # Limit to recent 10 points for clean aesthetic tails
+            pts_subset = list(points)[-10:]
+            if len(pts_subset) < 2:
+                continue
+
+            # Check if player has moved sufficiently to avoid noisy stationary dots
+            try:
+                first_pt = pts_subset[0]
+                last_pt = pts_subset[-1]
+                net_disp = np.hypot(float(last_pt[0]) - float(first_pt[0]), float(last_pt[1]) - float(first_pt[1]))
+                if net_disp < 8.0:
+                    continue
+            except Exception:
                 continue
 
             color = get_track_color(int(tid))
@@ -189,9 +211,9 @@ class VideoAnnotator:
                     raw_c = team_result.team_colors[matches[0]]
                     color = (int(raw_c[0]), int(raw_c[1]), int(raw_c[2]))
 
-            for i in range(len(points) - 1):
-                p1 = points[i]
-                p2 = points[i + 1]
+            for i in range(len(pts_subset) - 1):
+                p1 = pts_subset[i]
+                p2 = pts_subset[i + 1]
                 if not (isinstance(p1, (tuple, list, np.ndarray)) and isinstance(p2, (tuple, list, np.ndarray))):
                     continue
                 try:
@@ -201,21 +223,28 @@ class VideoAnnotator:
                         continue
                     if abs(x1) > 10000 or abs(y1) > 10000 or abs(x2) > 10000 or abs(y2) > 10000:
                         continue
+                    
+                    # Eliminate teleportation lines across the pitch
+                    step_dist = np.hypot(x2 - x1, y2 - y1)
+                    if step_dist > 120.0 or step_dist < 1.0:
+                        continue
+
                     pt1 = (int(round(x1)), int(round(y1)))
                     pt2 = (int(round(x2)), int(round(y2)))
                 except (ValueError, TypeError, IndexError):
                     continue
-                progress = (i + 1) / len(points)
+
+                progress = (i + 1) / len(pts_subset)
                 thickness = max(1, int(2.5 * progress))
                 cv2.line(frame, pt1, pt2, color, thickness, cv2.LINE_AA)
 
-            if len(points) > 0:
-                last_p = points[-1]
+            if len(pts_subset) > 0:
+                last_p = pts_subset[-1]
                 try:
                     lx, ly = float(last_p[0]), float(last_p[1])
                     if np.isfinite(lx) and np.isfinite(ly) and abs(lx) <= 10000 and abs(ly) <= 10000:
                         latest_pt = (int(round(lx)), int(round(ly)))
-                        cv2.circle(frame, latest_pt, 3, color, -1, cv2.LINE_AA)
+                        cv2.circle(frame, latest_pt, 2, color, -1, cv2.LINE_AA)
                 except Exception:
                     pass
 
@@ -227,12 +256,12 @@ class VideoAnnotator:
         ball_trail: Any,
     ) -> np.ndarray:
         """
-        Render dynamic luminous comet trail along the football's trajectory.
+        Render dynamic luminous comet trail along the football's trajectory without line glitches.
         """
         if not ball_trail or len(ball_trail) < 2:
             return frame
 
-        trail_pts = list(ball_trail)
+        trail_pts = list(ball_trail)[-14:]
         n = len(trail_pts)
 
         for i in range(n - 1):
@@ -243,6 +272,11 @@ class VideoAnnotator:
                     continue
                 if abs(x1) > 10000 or abs(y1) > 10000 or abs(x2) > 10000 or abs(y2) > 10000:
                     continue
+
+                # Filter out camera cut / teleport jumps
+                if np.hypot(x2 - x1, y2 - y1) > 200.0:
+                    continue
+
                 pt1 = (int(round(x1)), int(round(y1)))
                 pt2 = (int(round(x2)), int(round(y2)))
             except (ValueError, TypeError, IndexError):
@@ -250,7 +284,7 @@ class VideoAnnotator:
             is_interp = bool(trail_pts[i + 1][5]) if len(trail_pts[i + 1]) > 5 else False
 
             progress = (i + 1) / n
-            thickness = max(1, int(4.0 * progress))
+            thickness = max(1, int(3.5 * progress))
 
             if is_interp:
                 color = (255, 220, 0)
@@ -267,7 +301,7 @@ class VideoAnnotator:
             hx, hy = float(trail_pts[-1][0]), float(trail_pts[-1][1])
             if np.isfinite(hx) and np.isfinite(hy) and abs(hx) <= 10000 and abs(hy) <= 10000:
                 head_pt = (int(round(hx)), int(round(hy)))
-                cv2.circle(frame, head_pt, 5, (0, 255, 255), 1, cv2.LINE_AA)
+                cv2.circle(frame, head_pt, 4, (0, 255, 255), 1, cv2.LINE_AA)
                 cv2.circle(frame, head_pt, 2, (255, 255, 255), -1, cv2.LINE_AA)
         except Exception:
             pass
