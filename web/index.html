@@ -433,10 +433,16 @@
           </div>
         </div>
 
-        <div class="kpi-card cyan">
-          <div class="kpi-label">Possession Turnovers</div>
-          <div class="kpi-value" id="kpi-turnovers">6 Turnovers</div>
-          <div class="kpi-subtext" id="kpi-top-carrier">Top Carrier: Player #19</div>
+        <div class="kpi-card gold">
+          <div class="kpi-label">Expected Goals (xG)</div>
+          <div class="kpi-value" id="kpi-xg">1.42 vs 0.86</div>
+          <div class="kpi-subtext" id="kpi-xg-sub">Geometric & Logistic Conversion Model</div>
+        </div>
+
+        <div class="kpi-card blue">
+          <div class="kpi-label">Expected Threat (xT)</div>
+          <div class="kpi-value" id="kpi-xt">+1.84 vs +1.12</div>
+          <div class="kpi-subtext" id="kpi-xt-sub">16×12 Pitch Markov Matrix & Zone 14</div>
         </div>
 
         <div class="kpi-card emerald">
@@ -445,22 +451,16 @@
           <div class="kpi-subtext" id="kpi-events-subtext">Passes, Shots & Duels</div>
         </div>
 
+        <div class="kpi-card cyan">
+          <div class="kpi-label">Possession Turnovers</div>
+          <div class="kpi-value" id="kpi-turnovers">6 Turnovers</div>
+          <div class="kpi-subtext" id="kpi-top-carrier">Top Carrier: Player #19</div>
+        </div>
+
         <div class="kpi-card amber">
           <div class="kpi-label">Peak Sprint Recorded</div>
           <div class="kpi-value" id="kpi-top-speed">38.0 km/h</div>
           <div class="kpi-subtext" id="kpi-top-player">Player #19 • High-Intensity Sprint</div>
-        </div>
-
-        <div class="kpi-card purple">
-          <div class="kpi-label">Pitch Lock & Geometry</div>
-          <div class="kpi-value" id="kpi-homography">100.0%</div>
-          <div class="kpi-subtext">Reprojection RMSE: 0.000m</div>
-        </div>
-
-        <div class="kpi-card pink">
-          <div class="kpi-label">Scene Cuts & Re-ID Match</div>
-          <div class="kpi-value" id="kpi-cuts">0 Camera Cuts</div>
-          <div class="kpi-subtext" id="kpi-reid-subtext">Re-ID Gallery Active • 0 Shifts</div>
         </div>
       </div>
 
@@ -475,19 +475,21 @@
           </div>
         </div>
 
-        <!-- RIGHT: Positional Heatmaps & Radar -->
+        <!-- RIGHT: Positional Heatmaps & Passing Network Radar -->
         <div class="glass-card">
           <div class="tab-container">
             <button class="tab-btn active" data-tab="heatmap-team-a">Team A Heatmap</button>
             <button class="tab-btn" data-tab="heatmap-team-b">Team B Heatmap</button>
             <button class="tab-btn" data-tab="heatmap-all">Full Match Density</button>
+            <button class="tab-btn" data-tab="passing-network">Passing Networks</button>
           </div>
 
           <div class="heatmap-preview">
-            <img id="heatmap-img" src="outputs/heatmaps/heatmap_team_a.png" alt="Positional Tactical Heatmap">
+            <img id="heatmap-img" src="outputs/heatmaps/heatmap_team_a.png" alt="Positional Tactical Heatmap / Passing Network">
           </div>
         </div>
       </div>
+
 
       <!-- BOTTOM: Player Kinematics & Speed Leaderboard -->
       <div class="glass-card table-card">

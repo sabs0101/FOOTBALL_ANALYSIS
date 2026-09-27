@@ -17,6 +17,7 @@ import numpy as np
 
 from src.analytics.events import EventDetector, MatchEvent
 from src.analytics.speed_distance import SpeedEstimator, PlayerMetrics
+from src.analytics.xg_xt import TacticalAdvancedEngine, AdvancedTacticsSummary
 from src.calibration.camera_motion import CameraMotionCompensator, CameraMotionResult
 from src.calibration.homography import PitchHomography, HomographyResult
 from src.calibration.template import PitchTemplate
@@ -34,6 +35,8 @@ from src.utils.config import get_device, load_config
 from src.utils.video import VideoReader, VideoWriter, get_video_properties
 from src.visualization.annotator import VideoAnnotator
 from src.visualization.radar import TacticalRadar
+from src.visualization.passing_network import PassingNetworkVisualizer
+
 
 
 @dataclass
@@ -77,7 +80,9 @@ class AnalyticsPacket:
     active_event: Optional[MatchEvent]
     player_positions_m: np.ndarray
     ball_pos_m: Optional[Tuple[float, float]]
+    xg_scores: Optional[Tuple[float, float]] = None
     timestamp: float = field(default_factory=time.time)
+
 
 
 @dataclass
@@ -142,6 +147,7 @@ class AsyncTacticalPipeline:
         self.enable_heatmaps = self.options.get("heatmaps", True)
         self.enable_ball_tracking = self.options.get("ball_track", True)
         self.enable_events = self.options.get("events", True)
+        self.enable_advanced_tactics = self.options.get("advanced_tactics", True)
 
         # Performance Decoupling Parameters (Milestone 14)
         self.detector_interval = int(self.options.get("detector_interval", 1))
@@ -166,7 +172,28 @@ class AsyncTacticalPipeline:
             "egress_ms": 0.0,
         }
 
+        # Module references (instantiated in _init_modules)
+        self.preprocessor = None
+        self.detector = None
+        self.camera_compensator = None
+        self.cut_detector = None
+        self.reid = None
+        self.pitch_detector = None
+        self.tracker = None
+        self.calibrator = None
+        self.team_classifier = None
+        self.ball_tracker = None
+        self.event_detector = None
+        self.speed_estimator = None
+        self.spatial_control = None
+        self.heatmap_gen = None
+        self.advanced_engine = None
+        self.tactical_radar = None
+        self.passing_visualizer = None
+        self.annotator = None
+
     def _init_modules(self, props: Dict[str, Any], preferred_device: str):
+
         """Instantiate domain modules for worker stages."""
         fps = props["fps"]
         w = props["width"]
@@ -199,6 +226,7 @@ class AsyncTacticalPipeline:
         self.speed_estimator = SpeedEstimator(fps=fps) if self.enable_speed else None
         self.spatial_control = SpatialControl() if self.enable_tactics else None
         self.heatmap_gen = HeatmapGenerator() if self.enable_heatmaps else None
+        self.advanced_engine = TacticalAdvancedEngine() if self.enable_advanced_tactics else None
 
         # Stage 4 Modules
         radar_cfg = self.config.get("radar", {})
@@ -206,6 +234,8 @@ class AsyncTacticalPipeline:
             radar_width=radar_cfg.get("radar_width", 380),
             radar_height=radar_cfg.get("radar_height", 245),
         ) if self.enable_radar else None
+        self.passing_visualizer = PassingNetworkVisualizer() if self.enable_advanced_tactics else None
+
 
         self.annotator = VideoAnnotator(
             box_thickness=self.config["visualization"].get("box_thickness", 2),
@@ -523,6 +553,43 @@ class AsyncTacticalPipeline:
                                 team_ids=player_team_ids,
                             )
 
+                # 7. Advanced Tactical Intelligence: xG, xT, and Passing Networks (Milestone 17)
+                xg_scores = None
+                if self.advanced_engine is not None:
+                    if len(player_positions_m) > 0 and player_tids is not None and player_team_ids is not None:
+                        self.advanced_engine.update_player_positions(
+                            player_track_ids=player_tids,
+                            player_team_ids=player_team_ids,
+                            player_positions_m=player_positions_m,
+                        )
+                    if active_event is not None and getattr(active_event, "frame_idx", -1) == frame_idx:
+                        etype = getattr(active_event, "event_type", "")
+                        if etype == "SHOT":
+                            self.advanced_engine.record_shot_event(
+                                shooter_id=active_event.primary_player_id,
+                                team_id=active_event.team_id,
+                                shot_pos_m=active_event.start_pos_m,
+                                frame_idx=frame_idx,
+                                timestamp_s=active_event.timestamp_s,
+                                shot_speed_kmh=active_event.speed_kmh,
+                                defenders_m=player_positions_m if len(player_positions_m) > 0 else None,
+                            )
+                        elif etype == "PASS" and active_event.is_successful:
+                            self.advanced_engine.record_pass_action(
+                                passer_id=active_event.primary_player_id,
+                                receiver_id=active_event.secondary_player_id,
+                                team_id=active_event.team_id,
+                                start_pos_m=active_event.start_pos_m,
+                                end_pos_m=active_event.end_pos_m,
+                                frame_idx=frame_idx,
+                                timestamp_s=active_event.timestamp_s,
+                                speed_kmh=active_event.speed_kmh,
+                            )
+                    xg_scores = (
+                        round(self.advanced_engine.total_xg_team_a, 2),
+                        round(self.advanced_engine.total_xg_team_b, 2),
+                    )
+
                 analytics_packet = AnalyticsPacket(
                     frame_idx=frame_idx,
                     raw_frame=raw_frame,
@@ -539,7 +606,9 @@ class AsyncTacticalPipeline:
                     active_event=active_event,
                     player_positions_m=player_positions_m,
                     ball_pos_m=ball_pos_m,
+                    xg_scores=xg_scores,
                 )
+
 
                 while not self._stop_event.is_set():
                     try:
@@ -633,6 +702,7 @@ class AsyncTacticalPipeline:
                     frame_idx=frame_idx + 1,
                     total_frames=total_frames,
                     device_name="RTX 4050 (CUDA)" if "cuda" in self.detector.device else "CPU",
+                    xg_scores=packet.xg_scores,
                 )
 
                 # 2D Tactical Radar Overlay
@@ -693,6 +763,14 @@ class AsyncTacticalPipeline:
             poss_summary = self.ball_tracker.get_possession_summary() if self.ball_tracker else {}
             events_summary = self.event_detector.get_summary() if self.event_detector else None
             speed_summary = self.speed_estimator.get_team_summary() if self.speed_estimator else {}
+            adv_summary = self.advanced_engine.get_summary() if self.advanced_engine else None
+
+            if adv_summary is not None and self.passing_visualizer is not None and output_path:
+                try:
+                    diagram_dir = Path(output_path).parent / "tactics"
+                    self.passing_visualizer.save_summary_diagrams(adv_summary, diagram_dir)
+                except Exception:
+                    pass
 
             self._results = {
                 "total_frames": total_frames,
@@ -711,6 +789,7 @@ class AsyncTacticalPipeline:
                 },
                 "events": events_summary.to_dict() if events_summary else {},
                 "speed_kinematics": speed_summary,
+                "advanced_tactics": adv_summary.to_dict() if adv_summary else {},
                 "output_video": output_path,
             }
 
@@ -779,6 +858,10 @@ class AsyncTacticalPipeline:
             "possession_team_a_pct": packet.possession_result.team_a_possession_pct if packet.possession_result else 50.0,
             "possession_team_b_pct": packet.possession_result.team_b_possession_pct if packet.possession_result else 50.0,
             "turnovers": packet.possession_result.turnover_count if packet.possession_result else 0,
+            "xg_team_a": round(self.advanced_engine.total_xg_team_a, 2) if self.advanced_engine else 0.0,
+            "xg_team_b": round(self.advanced_engine.total_xg_team_b, 2) if self.advanced_engine else 0.0,
+            "xt_team_a": round(self.advanced_engine.total_xt_team_a, 2) if self.advanced_engine else 0.0,
+            "xt_team_b": round(self.advanced_engine.total_xt_team_b, 2) if self.advanced_engine else 0.0,
         }
 
         camera_data = {
@@ -799,6 +882,7 @@ class AsyncTacticalPipeline:
                 "distance_m": round(packet.active_event.distance_m, 1),
                 "description": packet.active_event.description,
             }
+
 
         return {
             "frame_idx": frame_idx,

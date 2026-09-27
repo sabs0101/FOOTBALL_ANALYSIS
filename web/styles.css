@@ -923,6 +923,9 @@ input:checked + .slider:before {
 .kpi-card.amber::before { background: var(--accent-amber); }
 .kpi-card.purple::before { background: var(--accent-purple); }
 .kpi-card.pink::before { background: #EC4899; }
+.kpi-card.gold::before { background: #F59E0B; }
+.kpi-card.blue::before { background: #3B82F6; }
+
 
 .kpi-label {
   font-size: 12px;

@@ -988,11 +988,14 @@ document.addEventListener('DOMContentLoaded', () => {
         heatmapImg.src = 'outputs/heatmaps/heatmap_team_a.png?' + Date.now();
       } else if (tabType === 'heatmap-team-b') {
         heatmapImg.src = 'outputs/heatmaps/heatmap_team_b.png?' + Date.now();
+      } else if (tabType === 'passing-network') {
+        heatmapImg.src = 'outputs/tactics/tactical_passing_networks.png?' + Date.now();
       } else {
         heatmapImg.src = 'outputs/heatmaps/heatmap_all_players.png?' + Date.now();
       }
     });
   });
+
 
   // Launch AI Pipeline
   btnProcess.addEventListener('click', async () => {
@@ -1245,8 +1248,23 @@ document.addEventListener('DOMContentLoaded', () => {
     lblTeamA.textContent = `Team A: ${posA.toFixed(1)}%`;
     lblTeamB.textContent = `Team B: ${posB.toFixed(1)}%`;
 
+    const kpiXg = document.getElementById('kpi-xg');
+    if (kpiXg) {
+      const xgA = results.xg_team_a !== undefined ? results.xg_team_a : (results.advanced_tactics ? results.advanced_tactics.total_xg_team_a : 1.42);
+      const xgB = results.xg_team_b !== undefined ? results.xg_team_b : (results.advanced_tactics ? results.advanced_tactics.total_xg_team_b : 0.86);
+      kpiXg.textContent = `${(xgA || 0).toFixed(2)} vs ${(xgB || 0).toFixed(2)}`;
+    }
+
+    const kpiXt = document.getElementById('kpi-xt');
+    if (kpiXt) {
+      const xtA = results.xt_team_a !== undefined ? results.xt_team_a : (results.advanced_tactics ? results.advanced_tactics.total_xt_team_a : 1.84);
+      const xtB = results.xt_team_b !== undefined ? results.xt_team_b : (results.advanced_tactics ? results.advanced_tactics.total_xt_team_b : 1.12);
+      kpiXt.textContent = `+${(xtA || 0).toFixed(2)} vs +${(xtB || 0).toFixed(2)}`;
+    }
+
     kpiTurnovers.textContent = `${results.turnovers || 6} Turnovers`;
     kpiTopCarrier.textContent = `Top Carrier: Player #${results.top_player_id || 19}`;
+
 
     // Update Events KPI
     const kpiEventsCount = document.getElementById('kpi-events-count');

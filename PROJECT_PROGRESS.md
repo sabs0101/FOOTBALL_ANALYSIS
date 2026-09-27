@@ -26,8 +26,10 @@
 | **Milestone 12** | Interactive Web Dashboard & Polished Demonstration | **COMPLETED** | **Glassmorphic Web App**, Universal H.264 MP4 streaming, Live drag-and-drop match report, **74 / 74 Unit Tests Passing** |
 | **Milestone 13** | High-Performance GPU Inference & TensorRT Acceleration | **COMPLETED** | **PyTorch CUDA FP16 & TensorRT Engine**, **103.9 FPS** throughput on RTX 4050, **81 / 81 Tests Passing** |
 | **Milestone 14** | Temporal Detector Decoupling & Algorithmic Lightweighting | **COMPLETED** | **Keyframe Interval Decoupling**, **Sparse GME (<1.5ms)**, **Homography Propagation**, **85 / 85 Tests Passing** |
-| **Milestone 15** | Asynchronous Multi-Threaded Producer-Consumer Architecture | **PLANNED** | **Decoupled 4-Thread Ring Buffer Pipeline**, non-blocking I/O, **60–75 FPS** |
-| **Milestone 16** | Live Streaming & WebSocket Telemetry Egress (Frontend Live Stream) | **PLANNED** | **Real-Time WebSocket Feed (<100ms latency)**, **HTML5 Live Canvas Overlay**, 90-Min Match Streaming |
+| **Milestone 15** | Asynchronous Multi-Threaded Producer-Consumer Architecture | **COMPLETED** | **Decoupled 4-Thread Ring Buffer Pipeline**, non-blocking I/O, **60–85 FPS Sustained** |
+| **Milestone 16** | Live Streaming & Real-Time Telemetry Egress (Frontend Live Stream) | **COMPLETED** | **Real-Time MJPEG Stream & Telemetry Feed (<100ms latency)**, Live Dynamic UI Overlay, **91 / 91 Tests Passing** |
+| **Milestone 17** | Advanced Expected Goals ($xG$), Expected Threat ($xT$) & Passing Network Topology Engine | **COMPLETED** | **Calibrated Spatial $xG$ Model**, **16×12 $xT$ Grid**, **Passing Network Topology**, **101 / 101 Tests Passing** |
+
 
 ---
 
@@ -274,12 +276,48 @@
 
 ---
 
+## Milestone 17 Details: Expected Goals ($xG$), Expected Threat ($xT$) & Passing Network Topology Engine (Completed)
+
+### 1. What We Built
+- **Calibrated Spatial Expected Goals Model ($xG$) ([`src/analytics/xg_xt.py`](file:///C:/FOOTBALL_ANALYSIS/src/analytics/xg_xt.py))**:
+  - `ExpectedGoalsModel`:
+    - Computes exact geometric visible goalmouth angle: $\theta = \arccos\left(\frac{a^2 + b^2 - W_{\text{goal}}^2}{2 a b}\right)$.
+    - Evaluates Euclidean distance to goal center $d$, defender shooting cone congestion count, and ballistic strike velocity.
+    - Logistic regression conversion function calibrated from match event distributions:
+      $$\text{logit} = \beta_0 + \beta_{\text{dist}} \cdot d + \beta_{\text{angle}} \cdot \theta + \beta_{\text{def}} \cdot N_{\text{def}} + \beta_{\text{speed}} \cdot v$$
+      $$xG = \sigma(\text{logit}) = \frac{1}{1 + e^{-\text{logit}}}$$
+- **$16 \times 12$ Positional Expected Threat Model ($xT$) ([`src/analytics/xg_xt.py`](file:///C:/FOOTBALL_ANALYSIS/src/analytics/xg_xt.py))**:
+  - `ExpectedThreatModel`:
+    - Discretizes the $105\text{m} \times 68\text{m}$ FIFA pitch into a $16 \times 12$ grid ($\sim 6.5\text{m} \times 5.6\text{m}$ tactical cells).
+    - Models probability transition value matrix with high density in central Zone 14 and the 18-yard box.
+    - Calculates threat added: $\Delta xT = V(x_{\text{end}}, y_{\text{end}}) - V(x_{\text{start}}, y_{\text{start}})$.
+    - Automatically classifies progressive actions ($\Delta xT \ge +0.012$ or $\ge 25\%$ distance gained towards opponent goal).
+- **Passing Network & Formation Topology Engine ([`src/analytics/xg_xt.py`](file:///C:/FOOTBALL_ANALYSIS/src/analytics/xg_xt.py))**:
+  - `PassingNetworkEngine`:
+    - Accumulates mean tactical coordinates $(\bar{x}, \bar{y})$ for all active player tracks.
+    - Tracks directed passing interactions $(P_1 \to P_2)$, pass distances, flight velocities, and cumulative threat created.
+    - Computes graph centrality leader, top passing pair combinations, and network connectivity density.
+    - **Automated Formation Inference**: Clusters players along longitudinal pitch axis into tactical defensive, midfield, and forward lines (e.g. `4-3-3`, `4-2-3-1`, `3-5-2`, `5-3-2`).
+- **2D Top-Down Passing Network Visualizer ([`src/visualization/passing_network.py`](file:///C:/FOOTBALL_ANALYSIS/src/visualization/passing_network.py))**:
+  - `PassingNetworkVisualizer`:
+    - Renders high-resolution top-down 2D pitch passing network graphs with weighted link line thickness ($1\text{--}6\text{px}$), glowing interaction overlays, player involvement nodes scaled by pass volume, team jersey colors, and formation title banners.
+    - Generates dual side-by-side comparative diagrams (`tactical_passing_networks.png`).
+- **Full Pipeline & Dashboard Integration ([`src/pipeline/async_pipeline.py`](file:///C:/FOOTBALL_ANALYSIS/src/pipeline/async_pipeline.py), [`app.py`](file:///C:/FOOTBALL_ANALYSIS/app.py), [`web/`](file:///C:/FOOTBALL_ANALYSIS/web/))**:
+  - Stage 3 (`_analytics_worker`) feeds player positions and detected events into `TacticalAdvancedEngine`.
+  - Top HUD bar displays live cumulative match $xG$ scoreline (e.g. `[xG: 1.42 - 0.86]`).
+  - Web UI includes dedicated **Expected Goals (xG)** & **Expected Threat (xT)** KPI cards, plus a switchable **Passing Networks & Formations** visualizer tab.
+- **Automated Unit Test Suite ([`tests/test_xg_xt.py`](file:///C:/FOOTBALL_ANALYSIS/tests/test_xg_xt.py))**:
+  - 10 comprehensive unit tests verifying $xG$ distance decay, angle monotonicity, defender congestion penalties, $xT$ gradient and progressive actions, passing matrix aggregation, formation inference, and OpenCV rendering.
+  - **Complete test suite**: **101 / 101 tests passing** (`pytest tests/ -v`).
+
+---
+
 ## Complete Test Suite Status
 
 ```powershell
-# Run all automated unit tests across entire repository (91 tests)
+# Run all automated unit tests across entire repository (101 tests)
 .venv\Scripts\pytest.exe tests/ -v
-# Result: 91 passed in 9.07s (100% Green Pass Rate)
+# Result: 101 passed in 10.67s (100% Green Pass Rate)
 ```
 
 ---
@@ -294,5 +332,6 @@
 .venv\Scripts\python.exe app.py 8000
 # Open http://localhost:8000 in your browser to experience real-time match streaming!
 ```
+
 
 

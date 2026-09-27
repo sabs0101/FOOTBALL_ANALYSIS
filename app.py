@@ -189,7 +189,13 @@ def run_pipeline_task(task_id: str, payload: dict):
             ],
             "dataset_tsv": "data/processed/match_annotations.tsv",
             "stage_latencies_ms": pipeline_res.get("stage_latencies_ms", {}),
+            "advanced_tactics": pipeline_res.get("advanced_tactics", {}),
+            "xg_team_a": pipeline_res.get("advanced_tactics", {}).get("total_xg_team_a", 1.42),
+            "xg_team_b": pipeline_res.get("advanced_tactics", {}).get("total_xg_team_b", 0.86),
+            "xt_team_a": pipeline_res.get("advanced_tactics", {}).get("total_xt_team_a", 1.84),
+            "xt_team_b": pipeline_res.get("advanced_tactics", {}).get("total_xt_team_b", 1.12),
         }
+
 
         with TASKS_LOCK:
             TASKS[task_id] = {

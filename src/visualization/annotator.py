@@ -393,6 +393,7 @@ class VideoAnnotator:
         cut_result: Optional[Any] = None,
         reid_count: int = 0,
         device_name: str = "GPU",
+        xg_scores: Optional[Tuple[float, float]] = None,
     ) -> np.ndarray:
         """
         Draw a sleek tactical analytics HUD bar at the top of the video frame.
@@ -444,15 +445,18 @@ class VideoAnnotator:
         else:
             cam_str = "CAM: LOCKED"
 
+        xg_str = f"xG: {xg_scores[0]:.2f} - {xg_scores[1]:.2f}" if xg_scores is not None else None
+
         hud_items = [
             f"FRAME: {frame_idx:04d}/{total_frames:04d}",
             f"DEVICE: {device_name}",
             f"SPEED: {fps:.1f} FPS",
-            f"TEAM A: {cnt_a:02d} | TEAM B: {cnt_b:02d}" if (cnt_a + cnt_b > 0) else f"PLAYERS: {num_players:02d}",
+            xg_str if xg_str else (f"TEAM A: {cnt_a:02d} | TEAM B: {cnt_b:02d}" if (cnt_a + cnt_b > 0) else f"PLAYERS: {num_players:02d}"),
             poss_str if poss_str else "SPACE: BALANCED",
             carrier_str if carrier_str else "BALL: TRACKED",
             cam_str,
         ]
+
 
         section_width = w // len(hud_items)
         for idx, text in enumerate(hud_items):
@@ -558,11 +562,12 @@ class VideoAnnotator:
         frame_idx: int = 0,
         total_frames: int = 0,
         device_name: str = "GPU",
+        xg_scores: Optional[Tuple[float, float]] = None,
     ) -> np.ndarray:
         """
         Complete annotation pipeline combining pitch lines, role badges, speed indicators,
         ball comet trails, possession beacons, camera motion telemetry, cut/ReID indicators,
-        tactical match event toasts (Milestone 11), spatial metrics, and HUD.
+        tactical match event toasts (Milestone 11), spatial metrics, xG scorelines (Milestone 17), and HUD.
         """
         annotated = self.draw_pitch(frame, pitch_result)
         annotated = self.draw_detections(
@@ -614,8 +619,10 @@ class VideoAnnotator:
                 cut_result=cut_result,
                 reid_count=reid_count,
                 device_name=device_name,
+                xg_scores=xg_scores,
             )
 
         return annotated
+
 
 
