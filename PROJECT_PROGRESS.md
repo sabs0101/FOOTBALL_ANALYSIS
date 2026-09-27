@@ -23,7 +23,11 @@
 | **Milestone 9** | Camera Movement & Zoom Compensation (GME & CMC) | **COMPLETED** | **Lucas-Kanade Pyramidal Flow**, **RANSAC Affine Decomposition**, **Warped Kalman State CMC** |
 | **Milestone 10** | Camera Cut Detection & Re-Identification across Cuts | **COMPLETED** | **Multi-Cue HSV/Edge Cut Detector**, **Multi-Zone Spatial Re-ID**, **Hungarian Matching** |
 | **Milestone 11** | Basic Football Event Recognition (Passes, Shots, Interceptions, Tackles) | **COMPLETED** | **Spatial-Temporal Event FSM**, **HUD Broadcast Toasts**, **JSON Timeline Export**, **66 / 66 Unit Tests Passing** |
-| **Milestone 12** | Interactive Web Dashboard & Polished Demonstration | **COMPLETED** | **Glassmorphic Web App**, Universal H.264 MP4 streaming, Live drag-and-drop match report, **72 / 72 Unit Tests Passing** |
+| **Milestone 12** | Interactive Web Dashboard & Polished Demonstration | **COMPLETED** | **Glassmorphic Web App**, Universal H.264 MP4 streaming, Live drag-and-drop match report, **74 / 74 Unit Tests Passing** |
+| **Milestone 13** | High-Performance GPU Inference & TensorRT Acceleration | **PLANNED** | **TensorRT FP16 Engine**, **80–120 FPS** raw detector throughput on RTX 4050 |
+| **Milestone 14** | Temporal Detector Decoupling & Algorithmic Lightweighting | **PLANNED** | **Keyframe Interval Detection**, **Sparse GME**, **Interval Homography**, **50–60 FPS** pipeline |
+| **Milestone 15** | Asynchronous Multi-Threaded Producer-Consumer Architecture | **PLANNED** | **Decoupled 4-Thread Ring Buffer Pipeline**, non-blocking I/O, **60–75 FPS** |
+| **Milestone 16** | Live Streaming & WebSocket Telemetry Egress (Frontend Live Stream) | **PLANNED** | **Real-Time WebSocket Feed (<100ms latency)**, **HTML5 Live Canvas Overlay**, 90-Min Match Streaming |
 
 ---
 
@@ -161,15 +165,45 @@
 
 ---
 
+## Real-Time 90-Minute Streaming & Optimization Roadmap (Milestones 13–16)
+
+### Milestone 13: High-Performance GPU Inference & TensorRT Acceleration
+- **Engine Compilation**: Export YOLOv8 to TensorRT FP16 engine (`yolov8m.engine`, `yolov8n.engine`).
+- **Zero-Copy CUDA Pinned Buffers**: Pre-allocated GPU device memory buffers avoiding dynamic reallocation latency.
+- **Target Performance**: Raw detector inference speed jumps from ~65ms to **8–12ms** (**80–120 FPS** on RTX 4050).
+
+### Milestone 14: Temporal Detector Decoupling & Algorithmic Lightweighting
+- **Temporal Keyframe Decoupling**: Run full YOLO detection every 2nd or 3rd frame; use ByteTrack Kalman + Optical Flow for intervening frames (~1.2ms/frame).
+- **Sparse Keypoint Optical Flow (Sparse GME)**: Replace dense optical flow with sparse pyramidal Lucas-Kanade on non-player corners (<1.5ms vs 25ms).
+- **Interval Homography & Motion Propagation**: Cache pitch lines and propagate homography matrix $H_t = H_{t-1} \cdot T_{\text{motion}}^{-1}$ at 1 Hz intervals.
+- **Target Performance**: End-to-end tactical pipeline reaches **50–60 FPS** on single-stream processing.
+
+### Milestone 15: Asynchronous Multi-Threaded Producer-Consumer Architecture
+- **4-Thread Ring Buffer Pipeline**:
+  - `Thread 1`: Hardware Video Ingestion / Decoder (NVDEC / PyAV)
+  - `Thread 2`: GPU TensorRT Inference & ByteTrack Tracking
+  - `Thread 3`: Tactical Analytics & Event Recognition Engine
+  - `Thread 4`: Live Egress & Streaming Hub
+- **Target Performance**: 100% CPU/GPU overlap with zero I/O blocking stalls (**60–75 FPS** sustained).
+
+### Milestone 16: Live Streaming & WebSocket Telemetry Egress (Frontend Live Stream)
+- **Live WebSocket Server (`/ws/live_match`)**: Streams compact JSON telemetry packets (25–60 Hz) containing player coordinates, speeds, ball curve, space dominance %, and live event toasts.
+- **Direct Live Video Stream Endpoint (`/stream/live_video`)**: Real-time chunked video stream allowing live playback in the browser without waiting for file completion.
+- **Frontend Live Canvas Overlay Layer**: Browser GPU draws bounding boxes, speed badges, ball comet trails, and 2D radar in real-time on HTML5 Canvas over `<video>`.
+- **Target Performance**: Full 90-minute live match streaming with **<100ms** telemetry latency!
+
+---
+
 ## How to Run & Verify
 
 ```powershell
-# Run all 42 automated unit tests
+# Run all automated unit tests (74 tests)
 .venv\Scripts\pytest.exe tests/ -v
 
-# Run complete Tactical Master pipeline (Milestones 1-8)
+# Run complete Tactical Master pipeline
 .venv\Scripts\python.exe main.py --source data/videos/sample_broadcast.mp4 --device 0
 
 # Start interactive Web Dashboard server
 .venv\Scripts\python.exe app.py 8000
 ```
+
