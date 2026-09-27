@@ -182,21 +182,42 @@ class VideoAnnotator:
             if len(points) < 2:
                 continue
 
-            color = get_track_color(tid)
+            color = get_track_color(int(tid))
             if team_result is not None and tracker_ids is not None:
                 matches = np.where(tracker_ids == tid)[0]
-                if len(matches) > 0:
-                    color = team_result.team_colors[matches[0]]
+                if len(matches) > 0 and matches[0] < len(team_result.team_colors):
+                    raw_c = team_result.team_colors[matches[0]]
+                    color = (int(raw_c[0]), int(raw_c[1]), int(raw_c[2]))
 
             for i in range(len(points) - 1):
-                pt1 = (int(points[i][0]), int(points[i][1]))
-                pt2 = (int(points[i + 1][0]), int(points[i + 1][1]))
+                p1 = points[i]
+                p2 = points[i + 1]
+                if not (isinstance(p1, (tuple, list, np.ndarray)) and isinstance(p2, (tuple, list, np.ndarray))):
+                    continue
+                try:
+                    x1, y1 = float(p1[0]), float(p1[1])
+                    x2, y2 = float(p2[0]), float(p2[1])
+                    if not (np.isfinite(x1) and np.isfinite(y1) and np.isfinite(x2) and np.isfinite(y2)):
+                        continue
+                    if abs(x1) > 10000 or abs(y1) > 10000 or abs(x2) > 10000 or abs(y2) > 10000:
+                        continue
+                    pt1 = (int(round(x1)), int(round(y1)))
+                    pt2 = (int(round(x2)), int(round(y2)))
+                except (ValueError, TypeError, IndexError):
+                    continue
                 progress = (i + 1) / len(points)
                 thickness = max(1, int(2.5 * progress))
                 cv2.line(frame, pt1, pt2, color, thickness, cv2.LINE_AA)
 
-            latest_pt = (int(points[-1][0]), int(points[-1][1]))
-            cv2.circle(frame, latest_pt, 3, color, -1, cv2.LINE_AA)
+            if len(points) > 0:
+                last_p = points[-1]
+                try:
+                    lx, ly = float(last_p[0]), float(last_p[1])
+                    if np.isfinite(lx) and np.isfinite(ly) and abs(lx) <= 10000 and abs(ly) <= 10000:
+                        latest_pt = (int(round(lx)), int(round(ly)))
+                        cv2.circle(frame, latest_pt, 3, color, -1, cv2.LINE_AA)
+                except Exception:
+                    pass
 
         return frame
 
@@ -215,9 +236,18 @@ class VideoAnnotator:
         n = len(trail_pts)
 
         for i in range(n - 1):
-            pt1 = (int(trail_pts[i][0]), int(trail_pts[i][1]))
-            pt2 = (int(trail_pts[i + 1][0]), int(trail_pts[i + 1][1]))
-            is_interp = trail_pts[i + 1][5] if len(trail_pts[i + 1]) > 5 else False
+            try:
+                x1, y1 = float(trail_pts[i][0]), float(trail_pts[i][1])
+                x2, y2 = float(trail_pts[i + 1][0]), float(trail_pts[i + 1][1])
+                if not (np.isfinite(x1) and np.isfinite(y1) and np.isfinite(x2) and np.isfinite(y2)):
+                    continue
+                if abs(x1) > 10000 or abs(y1) > 10000 or abs(x2) > 10000 or abs(y2) > 10000:
+                    continue
+                pt1 = (int(round(x1)), int(round(y1)))
+                pt2 = (int(round(x2)), int(round(y2)))
+            except (ValueError, TypeError, IndexError):
+                continue
+            is_interp = bool(trail_pts[i + 1][5]) if len(trail_pts[i + 1]) > 5 else False
 
             progress = (i + 1) / n
             thickness = max(1, int(4.0 * progress))
@@ -233,9 +263,14 @@ class VideoAnnotator:
             cv2.line(frame, pt1, pt2, color, thickness, cv2.LINE_AA)
 
         # Head of the comet
-        head_pt = (int(trail_pts[-1][0]), int(trail_pts[-1][1]))
-        cv2.circle(frame, head_pt, 5, (0, 255, 255), 1, cv2.LINE_AA)
-        cv2.circle(frame, head_pt, 2, (255, 255, 255), -1, cv2.LINE_AA)
+        try:
+            hx, hy = float(trail_pts[-1][0]), float(trail_pts[-1][1])
+            if np.isfinite(hx) and np.isfinite(hy) and abs(hx) <= 10000 and abs(hy) <= 10000:
+                head_pt = (int(round(hx)), int(round(hy)))
+                cv2.circle(frame, head_pt, 5, (0, 255, 255), 1, cv2.LINE_AA)
+                cv2.circle(frame, head_pt, 2, (255, 255, 255), -1, cv2.LINE_AA)
+        except Exception:
+            pass
 
         return frame
 

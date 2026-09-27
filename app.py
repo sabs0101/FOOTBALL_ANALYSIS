@@ -31,7 +31,7 @@ from src.utils.video import get_video_properties
 # Global in-memory task tracking with live streaming buffers
 TASKS = {}
 TASKS_LOCK = threading.Lock()
-EXECUTOR = ThreadPoolExecutor(max_workers=2)
+EXECUTOR = ThreadPoolExecutor(max_workers=4)
 
 
 def run_pipeline_task(task_id: str, payload: dict):
@@ -39,8 +39,23 @@ def run_pipeline_task(task_id: str, payload: dict):
     Executes the tactical AI analysis pipeline asynchronously via the 4-stage producer-consumer
     architecture, pushing real-time progress, JPEG frames, and telemetry packets to TASKS[task_id].
     """
+    print(f"[app.py] run_pipeline_task started for task_id={task_id}", flush=True)
     try:
-        source_path = payload.get("source", "data/videos/sample_broadcast.mp4")
+        raw_source = payload.get("source", "data/videos/sample_broadcast.mp4")
+        clean_source = str(raw_source).replace("\\", "/").lstrip("/")
+        source_file = Path(clean_source)
+        if not source_file.is_absolute():
+            source_file = (Path(__file__).resolve().parent / clean_source).resolve()
+
+        if not source_file.exists():
+            fallback = Path(__file__).resolve().parent / "data/videos/sample_broadcast.mp4"
+            if fallback.exists():
+                source_file = fallback
+            else:
+                raise FileNotFoundError(f"Video file not found: {source_file}")
+
+        source_path = str(source_file).replace("\\", "/")
+        print(f"[app.py] Resolved source_path: {source_path}", flush=True)
         enable_radar = payload.get("radar", True)
         enable_speed = payload.get("speed", True)
         enable_tactics = payload.get("tactics", True)
@@ -49,7 +64,7 @@ def run_pipeline_task(task_id: str, payload: dict):
         enable_reid = payload.get("reid", True)
         enable_events = payload.get("events", True)
         enable_clahe = payload.get("clahe", True)
-        detector_interval = int(payload.get("detector_interval", 1))
+        detector_interval = int(payload.get("detector_interval", 2))
         sparse_gme = bool(payload.get("sparse_gme", True))
         homography_interval = int(payload.get("homography_interval", 25))
 
@@ -58,6 +73,7 @@ def run_pipeline_task(task_id: str, payload: dict):
 
         props = get_video_properties(str(source_path))
         total_frames = props["frame_count"]
+        print(f"[app.py] Total frames in video: {total_frames}", flush=True)
 
         out_name = f"output_{Path(source_path).stem}.mp4"
         out_video_path = f"outputs/tracks/{out_name}"
@@ -88,6 +104,11 @@ def run_pipeline_task(task_id: str, payload: dict):
                         TASKS[task_id]["latest_jpeg"] = jpeg_bytes
                         TASKS[task_id]["latest_frame_idx"] = frame_idx
                         TASKS[task_id]["latest_telemetry"] = telemetry
+                        TASKS[task_id]["current_frame"] = frame_idx + 1
+                        if telemetry.get("fps"):
+                            TASKS[task_id]["fps"] = float(telemetry["fps"])
+                        if telemetry.get("players"):
+                            TASKS[task_id]["player_count"] = len(telemetry["players"])
                         if telemetry.get("event"):
                             TASKS[task_id]["events_stream"].append(telemetry["event"])
 
@@ -213,6 +234,9 @@ def run_pipeline_task(task_id: str, payload: dict):
             }
 
     except Exception as err:
+        import traceback
+        traceback.print_exc()
+        print(f"[app.py] Error in run_pipeline_task({task_id}): {err}")
         with TASKS_LOCK:
             TASKS[task_id] = {
                 "status": "error",
@@ -220,9 +244,29 @@ def run_pipeline_task(task_id: str, payload: dict):
                 "total_frames": 0,
                 "fps": 0.0,
                 "player_count": 0,
+                "latest_jpeg": None,
+                "latest_frame_idx": -1,
+                "latest_telemetry": None,
+                "events_stream": [],
                 "results": None,
                 "error": str(err),
             }
+
+
+class CustomJSONEncoder(json.JSONEncoder):
+    """Robust JSON encoder supporting NumPy primitives, arrays, Paths, and omitting raw bytes."""
+    def default(self, obj):
+        if isinstance(obj, bytes):
+            return None
+        if isinstance(obj, (np.integer, np.int64, np.int32)):
+            return int(obj)
+        if isinstance(obj, (np.floating, np.float64, np.float32)):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, Path):
+            return str(obj)
+        return super().default(obj)
 
 
 class DashboardHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
@@ -237,7 +281,9 @@ class DashboardHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         if path == "/api/progress":
             task_id = query.get("task_id", [""])[0]
             with TASKS_LOCK:
-                task_info = TASKS.get(task_id, {"status": "not_found"})
+                raw_info = TASKS.get(task_id, {"status": "not_found"})
+                # Omit raw JPEG bytes from progress json
+                task_info = {k: v for k, v in raw_info.items() if k != "latest_jpeg"}
             self._send_json(task_info)
             return
 
@@ -287,6 +333,7 @@ class DashboardHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
                 task = TASKS.get(task_id, {})
                 telemetry = task.get("latest_telemetry", {})
                 events = task.get("events_stream", [])
+                error_msg = task.get("error", None)
             self._send_json({
                 "task_id": task_id,
                 "status": task.get("status", "unknown"),
@@ -295,6 +342,7 @@ class DashboardHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
                 "fps": task.get("fps", 0.0),
                 "telemetry": telemetry,
                 "recent_events": events[-5:] if events else [],
+                "error": error_msg,
             })
             return
 
@@ -321,6 +369,7 @@ class DashboardHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
             content_len = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(content_len).decode("utf-8")
             payload = json.loads(body) if body else {}
+            print(f"[app.py] POST /api/process received with payload: {payload}", flush=True)
 
             task_id = str(uuid.uuid4())[:8]
             with TASKS_LOCK:
@@ -338,7 +387,9 @@ class DashboardHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
                     "error": None,
                 }
 
-            EXECUTOR.submit(run_pipeline_task, task_id, payload)
+            t = threading.Thread(target=run_pipeline_task, args=(task_id, payload), name=f"Task-{task_id}", daemon=True)
+            t.start()
+            print(f"[app.py] Thread {t.name} started for task_id={task_id}", flush=True)
             self._send_json({"status": "started", "task_id": task_id})
             return
 
@@ -404,7 +455,11 @@ class DashboardHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         self.send_error(404, "Not Found")
 
     def _send_json(self, data: dict, status: int = 200):
-        body = json.dumps(data).encode("utf-8")
+        try:
+            body = json.dumps(data, cls=CustomJSONEncoder).encode("utf-8")
+        except Exception as err:
+            body = json.dumps({"status": "error", "message": f"Serialization error: {err}"}).encode("utf-8")
+            status = 500
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))

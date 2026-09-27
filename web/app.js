@@ -1048,6 +1048,9 @@ document.addEventListener('DOMContentLoaded', () => {
         events: getChecked('cfg-events', true),
         clahe: getChecked('cfg-clahe', true),
         ball_track: getChecked('cfg-ball', true),
+        detector_interval: 2,
+        sparse_gme: true,
+        homography_interval: 25,
       };
 
       updatePipelineStatusText('Starting AI Tactical Pipeline...');
@@ -1062,7 +1065,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (procData.status === 'started') {
         startPollingProgress(procData.task_id);
       } else {
-        throw new Error(procData.error || 'Failed to start process');
+        throw new Error(procData.error || procData.message || 'Failed to start process');
       }
 
     } catch (err) {
@@ -1114,8 +1117,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await res.json();
 
         if (data.status === 'processing') {
-          if (streamLoadingOverlay && data.current_frame > 1) {
+          if (streamLoadingOverlay && (data.current_frame >= 1 || data.fps > 0)) {
             streamLoadingOverlay.style.display = 'none';
+          } else if (streamLoadingOverlay && data.current_frame === 0) {
+            updatePipelineStatusText('Initializing GPU Neural Inference & Warmup...');
           }
 
           const cur = data.current_frame || 0;
@@ -1220,7 +1225,6 @@ document.addEventListener('DOMContentLoaded', () => {
           if (progressBar) progressBar.style.width = '100%';
           if (btnProcess) btnProcess.disabled = false;
 
-
           // Fetch full progress payload with final results
           const fullRes = await fetch(`/api/progress?task_id=${taskId}`);
           const fullData = await fullRes.json();
@@ -1233,7 +1237,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (data.status === 'error') {
           clearInterval(pollInterval);
           if (liveStreamImg) liveStreamImg.src = '';
-          alert(`Processing error: ${data.error}`);
+          alert(`Processing error: ${data.error || 'Pipeline execution failed'}`);
           btnProcess.disabled = false;
           switchView('upload');
         }

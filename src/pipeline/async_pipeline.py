@@ -281,8 +281,16 @@ class AsyncTacticalPipeline:
             self._exceptions.append(e)
             self._stop_event.set()
         finally:
-            # Send sentinel poison pill to next stage
-            self._ingest_queue.put(None)
+            # Send sentinel poison pill to next stage without blocking if stopped
+            try:
+                while not self._stop_event.is_set():
+                    try:
+                        self._ingest_queue.put(None, timeout=0.1)
+                        break
+                    except queue.Full:
+                        continue
+            except Exception:
+                pass
 
     # -------------------------------------------------------------------------
     # Worker Stage 2: GPU Inference & Tracking
@@ -404,7 +412,15 @@ class AsyncTacticalPipeline:
             self._exceptions.append(e)
             self._stop_event.set()
         finally:
-            self._inference_queue.put(None)
+            try:
+                while not self._stop_event.is_set():
+                    try:
+                        self._inference_queue.put(None, timeout=0.1)
+                        break
+                    except queue.Full:
+                        continue
+            except Exception:
+                pass
 
     # -------------------------------------------------------------------------
     # Worker Stage 3: Tactical Analytics Engine
@@ -624,7 +640,15 @@ class AsyncTacticalPipeline:
             self._exceptions.append(e)
             self._stop_event.set()
         finally:
-            self._analytics_queue.put(None)
+            try:
+                while not self._stop_event.is_set():
+                    try:
+                        self._analytics_queue.put(None, timeout=0.1)
+                        break
+                    except queue.Full:
+                        continue
+            except Exception:
+                pass
 
     # -------------------------------------------------------------------------
     # Worker Stage 4: Visual Egress, Streaming & Metrics Hub
@@ -827,7 +851,13 @@ class AsyncTacticalPipeline:
             team_color = [255, 50, 50]
             if packet.team_result is not None and i < len(packet.team_result.team_ids):
                 team_id = int(packet.team_result.team_ids[i])
-                team_name = packet.team_result.team_names.get(team_id, f"Team {team_id}")
+                if isinstance(packet.team_result.team_names, list) and i < len(packet.team_result.team_names):
+                    team_name = packet.team_result.team_names[i]
+                elif isinstance(packet.team_result.team_names, dict):
+                    team_name = packet.team_result.team_names.get(team_id, f"Team {team_id}")
+                else:
+                    team_name = f"Team {team_id}"
+
                 if i < len(packet.team_result.team_colors):
                     team_color = [int(c) for c in packet.team_result.team_colors[i]]
 
@@ -966,15 +996,12 @@ class AsyncTacticalPipeline:
         """Signals all worker threads to terminate immediately."""
         self._stop_event.set()
         # Drain queues to unblock any waiting puts
-        try:
-            while not self._ingest_queue.empty():
-                self._ingest_queue.get_nowait()
-            while not self._inference_queue.empty():
-                self._inference_queue.get_nowait()
-            while not self._analytics_queue.empty():
-                self._analytics_queue.get_nowait()
-        except Exception:
-            pass
+        for q in (self._ingest_queue, self._inference_queue, self._analytics_queue):
+            try:
+                while not q.empty():
+                    q.get_nowait()
+            except Exception:
+                pass
 
     def run(self, source_path: str, output_path: Optional[str] = None) -> Dict[str, Any]:
         """

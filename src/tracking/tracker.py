@@ -99,6 +99,10 @@ class PlayerTracker:
             ], dtype=np.float32).reshape(-1, 1, 2)
 
             warped = cv2.transform(corners, M).reshape(-1, 2)
+            if not np.isfinite(warped).all() or np.max(np.abs(warped)) > 10000:
+                self.last_boxes.pop(tid, None)
+                continue
+
             self.last_boxes[tid] = np.array([
                 np.min(warped[:, 0]),
                 np.min(warped[:, 1]),
@@ -155,6 +159,10 @@ class PlayerTracker:
                     cy + bh / 2.0,
                 ], dtype=np.float32)
 
+                if not np.isfinite(new_box).all() or np.max(np.abs(new_box)) > 10000:
+                    self.last_boxes.pop(tid, None)
+                    continue
+
                 self.last_boxes[tid] = new_box
                 conf = self.last_confs.get(tid, 0.80) * 0.98
 
@@ -165,7 +173,8 @@ class PlayerTracker:
 
                 foot_x = cx
                 foot_y = new_box[3]
-                self.trails[tid].append((foot_x, foot_y))
+                if np.isfinite(foot_x) and np.isfinite(foot_y) and abs(foot_x) <= 10000 and abs(foot_y) <= 10000:
+                    self.trails[tid].append((foot_x, foot_y))
 
         if intervening_boxes:
             final_boxes = np.array(intervening_boxes, dtype=np.float32)
