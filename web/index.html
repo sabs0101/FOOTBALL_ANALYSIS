@@ -255,36 +255,119 @@
     </main>
 
     <!-- =======================================================================
-         VIEW 2: LIVE AI PROCESSING MODAL / HUD
+         VIEW 2: LIVE AI PROCESSING & REAL-TIME VIDEO STREAM (Milestone 16)
          ======================================================================= -->
     <section id="view-processing" class="view-panel">
-      <div class="glass-card processing-card">
-        <div class="progress-spinner-container">
-          <div class="spinner-ring"></div>
-          <div class="spinner-text" id="progress-pct">0%</div>
-        </div>
-
-        <h3 class="progress-title" id="progress-status-text">Analyzing Broadcast Match Footage</h3>
-        <p class="progress-subtitle">Executing YOLOv8m detection, ByteTrack tracking, Kalman Ball Estimation & Possession assignment...</p>
-
-        <div class="progress-bar-track">
-          <div class="progress-bar-fill" id="progress-bar"></div>
-        </div>
-
-        <div class="live-metrics-row">
-          <div class="live-metric">
-            <h6>Frame Progress</h6>
-            <span id="metric-frame-count">0 / 0</span>
+      <div class="live-stream-container">
+        
+        <!-- TOP STREAM HEADER & CONTROLS -->
+        <div class="stream-header-card glass-card">
+          <div class="stream-title-group">
+            <div class="live-badge-glow">
+              <span class="pulse-beacon-live"></span>
+              <span>LIVE AI TACTICAL STREAM</span>
+            </div>
+            <h3 id="live-match-heading">Real-Time Broadcast Analysis</h3>
+            <p id="live-match-sub">Streaming GPU TensorRT & Async Multi-Threaded Tactical Engine</p>
           </div>
-          <div class="live-metric">
-            <h6>Inference Speed</h6>
-            <span id="metric-fps">0.0 FPS</span>
-          </div>
-          <div class="live-metric">
-            <h6>Players On Field</h6>
-            <span id="metric-players">0</span>
+          <div class="stream-progress-group">
+            <div class="progress-bar-track-stream">
+              <div class="progress-bar-fill" id="progress-bar"></div>
+            </div>
+            <div class="stream-stats-strip">
+              <span id="metric-frame-count">0 / 0</span>
+              <span id="metric-fps" class="stat-highlight">⚡ 0.0 FPS</span>
+              <span id="progress-pct" class="stat-pct">0% Complete</span>
+            </div>
           </div>
         </div>
+
+        <!-- MAIN LIVE STREAM VIEWPORT WITH HUD OVERLAY -->
+        <div class="live-stream-viewport-wrapper glass-card">
+          <div class="live-stream-screen">
+            <!-- MJPEG Live Stream Image -->
+            <img id="live-stream-img" class="live-stream-img" alt="Tactical Video Stream" src="" />
+            
+            <!-- Fallback loading overlay before stream starts -->
+            <div class="stream-loading-overlay" id="stream-loading-overlay">
+              <div class="spinner-ring"></div>
+              <span id="stream-loading-text">Connecting to GPU Inference Stream...</span>
+            </div>
+
+            <!-- Real-Time Event Toast Notification Banner -->
+            <div class="live-event-banner" id="live-event-banner" style="display: none;">
+              <div class="event-banner-badge" id="banner-event-type">PASS</div>
+              <div class="event-banner-desc" id="banner-event-desc">Player #106 passed to Player #108 (38.4 km/h)</div>
+            </div>
+
+            <!-- Live HUD Overlays (Top-Right Live Tactical Space & Radar) -->
+            <div class="live-hud-strip">
+              <div class="hud-pill">
+                <span class="hud-label">CARRIER</span>
+                <span class="hud-value" id="hud-carrier-val">Searching...</span>
+              </div>
+              <div class="hud-pill">
+                <span class="hud-label">BALL SPEED</span>
+                <span class="hud-value" id="hud-ball-speed">0.0 km/h</span>
+              </div>
+              <div class="hud-pill">
+                <span class="hud-label">ACTIVE PLAYERS</span>
+                <span class="hud-value" id="metric-players">0</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- LIVE TACTICAL SIDEBAR -->
+          <div class="live-sidebar">
+            <div class="sidebar-section">
+              <h5 class="sidebar-title">
+                <span class="indicator-dot"></span> Live Space Dominance
+              </h5>
+              <div class="live-dominance-bar">
+                <div class="dom-fill dom-team-a" id="live-dom-a" style="width: 50%;">50%</div>
+                <div class="dom-fill dom-team-b" id="live-dom-b" style="width: 50%;">50%</div>
+              </div>
+              <div class="dom-labels">
+                <span class="team-a-txt">Team A (White)</span>
+                <span class="team-b-txt">Team B (Neon)</span>
+              </div>
+            </div>
+
+            <div class="sidebar-section">
+              <h5 class="sidebar-title">
+                <span class="indicator-dot emerald"></span> Live Match Possession
+              </h5>
+              <div class="live-dominance-bar">
+                <div class="dom-fill poss-team-a" id="live-poss-a" style="width: 50%;">50%</div>
+                <div class="dom-fill poss-team-b" id="live-poss-b" style="width: 50%;">50%</div>
+              </div>
+              <div class="dom-labels">
+                <span class="team-a-txt">Possession A</span>
+                <span class="team-b-txt">Possession B</span>
+              </div>
+            </div>
+
+            <div class="sidebar-section">
+              <h5 class="sidebar-title">
+                <span class="indicator-dot amber"></span> Live Match Events Log
+              </h5>
+              <div class="live-events-feed" id="live-events-feed">
+                <div class="event-feed-empty">Waiting for tactical events...</div>
+              </div>
+            </div>
+
+            <div class="sidebar-section latency-box">
+              <h5 class="sidebar-title">Pipeline Stage Latencies</h5>
+              <div class="latency-grid">
+                <div class="lat-item"><span>Ingest:</span> <b id="lat-ingest">-- ms</b></div>
+                <div class="lat-item"><span>Inference:</span> <b id="lat-infer">-- ms</b></div>
+                <div class="lat-item"><span>Analytics:</span> <b id="lat-analytics">-- ms</b></div>
+                <div class="lat-item"><span>Egress:</span> <b id="lat-egress">-- ms</b></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
     </section>
 

@@ -498,3 +498,27 @@ class BallTracker:
             turnover_count=self.turnover_count,
             player_possession_counts=dict(self.player_possession_counts),
         )
+
+    def get_possession_summary(self) -> Dict[str, Any]:
+        """Returns aggregated match possession summary statistics."""
+        active_total = self.team_a_possession_frames + self.team_b_possession_frames
+        if active_total > 0:
+            pct_a = round((self.team_a_possession_frames / active_total) * 100.0, 1)
+            pct_b = round((self.team_b_possession_frames / active_total) * 100.0, 1)
+        else:
+            pct_a, pct_b = 50.0, 50.0
+
+        contested_pct = round((self.contested_frames / max(1, self.total_tracked_frames)) * 100.0, 1)
+        top_carrier = None
+        if self.player_possession_counts:
+            top_carrier = max(self.player_possession_counts.items(), key=lambda x: x[1])[0]
+
+        return {
+            "team_a_possession_pct": pct_a,
+            "team_b_possession_pct": pct_b,
+            "contested_pct": contested_pct,
+            "turnovers": self.turnover_count,
+            "top_carrier_id": top_carrier,
+            "player_possession_frames": dict(self.player_possession_counts),
+        }
+

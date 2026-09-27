@@ -56,6 +56,11 @@ class EventSummary:
     total_turnovers: int
     events_timeline: List[Dict[str, Any]]
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert summary to JSON-serializable dictionary."""
+        from dataclasses import asdict
+        return asdict(self)
+
 
 class EventDetector:
     """

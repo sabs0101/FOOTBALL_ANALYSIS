@@ -143,3 +143,66 @@ def test_video_upload_endpoint(server_port, tmp_path):
     assert uploaded_file.exists()
     assert uploaded_file.stat().st_size == len(dummy_video_content)
 
+
+def test_live_telemetry_endpoint(server_port):
+    """Verify /api/telemetry returns structured real-time match telemetry (Milestone 16)."""
+    with TASKS_LOCK:
+        TASKS["stream_task_456"] = {
+            "status": "processing",
+            "current_frame": 18,
+            "total_frames": 100,
+            "fps": 55.4,
+            "player_count": 22,
+            "latest_jpeg": b"\xff\xd8\xff\xe0" + b"\x00" * 32,
+            "latest_frame_idx": 18,
+            "latest_telemetry": {
+                "frame_idx": 18,
+                "fps": 55.4,
+                "players": [{"id": 10, "speed_kmh": 24.5}],
+                "ball": {"detected": True, "speed_kmh": 45.2, "carrier_id": 10},
+                "tactics": {"team_a_control_pct": 58.0, "team_b_control_pct": 42.0},
+            },
+            "events_stream": [
+                {"type": "PASS", "team": "Team A", "description": "Pass to #10"}
+            ],
+            "results": None,
+            "error": None,
+        }
+
+    url = f"http://127.0.0.1:{server_port}/api/telemetry?task_id=stream_task_456"
+    req = urllib.request.urlopen(url)
+    assert req.status == 200
+    data = json.loads(req.read().decode("utf-8"))
+    assert data["task_id"] == "stream_task_456"
+    assert data["status"] == "processing"
+    assert data["current_frame"] == 18
+    assert data["fps"] == 55.4
+    assert data["telemetry"]["ball"]["carrier_id"] == 10
+    assert len(data["recent_events"]) == 1
+    assert data["recent_events"][0]["type"] == "PASS"
+
+
+def test_live_stream_endpoint_headers(server_port):
+    """Verify /api/stream returns multipart/x-mixed-replace live streaming response (Milestone 16)."""
+    with TASKS_LOCK:
+        TASKS["stream_task_789"] = {
+            "status": "completed",
+            "current_frame": 10,
+            "total_frames": 10,
+            "fps": 60.0,
+            "latest_jpeg": b"\xff\xd8\xff\xe0" + b"\x00" * 16,
+            "latest_frame_idx": 10,
+            "latest_telemetry": None,
+            "events_stream": [],
+            "results": {},
+            "error": None,
+        }
+
+    url = f"http://127.0.0.1:{server_port}/api/stream?task_id=stream_task_789"
+    req = urllib.request.urlopen(url)
+    assert req.status == 200
+    content_type = req.headers.get("Content-Type", "")
+    assert "multipart/x-mixed-replace" in content_type
+    assert "boundary=frame" in content_type
+
+

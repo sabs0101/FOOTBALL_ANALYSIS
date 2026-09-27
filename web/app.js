@@ -1055,38 +1055,164 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Polling Progress Endpoint
+  // Polling Progress and Live Streaming Endpoint
   function startPollingProgress(taskId) {
     if (pollInterval) clearInterval(pollInterval);
 
+    // 1. Connect Live Video Stream
+    const liveStreamImg = document.getElementById('live-stream-img');
+    const streamLoadingOverlay = document.getElementById('stream-loading-overlay');
+    const liveEventBanner = document.getElementById('live-event-banner');
+    const bannerEventType = document.getElementById('banner-event-type');
+    const bannerEventDesc = document.getElementById('banner-event-desc');
+
+    const liveDomA = document.getElementById('live-dom-a');
+    const liveDomB = document.getElementById('live-dom-b');
+    const livePossA = document.getElementById('live-poss-a');
+    const livePossB = document.getElementById('live-poss-b');
+    const hudCarrierVal = document.getElementById('hud-carrier-val');
+    const hudBallSpeed = document.getElementById('hud-ball-speed');
+    const liveEventsFeed = document.getElementById('live-events-feed');
+
+    const latIngest = document.getElementById('lat-ingest');
+    const latInfer = document.getElementById('lat-infer');
+    const latAnalytics = document.getElementById('lat-analytics');
+    const latEgress = document.getElementById('lat-egress');
+
+    if (liveStreamImg) {
+      liveStreamImg.src = `/api/stream?task_id=${taskId}&t=${Date.now()}`;
+      liveStreamImg.onload = () => {
+        if (streamLoadingOverlay) streamLoadingOverlay.style.display = 'none';
+      };
+    }
+
+    let seenEventTimestamps = new Set();
+    let toastTimeout = null;
+
+    // 2. High-Frequency Live Telemetry Poller (150ms)
     pollInterval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/progress?task_id=${taskId}`);
+        const res = await fetch(`/api/telemetry?task_id=${taskId}`);
         const data = await res.json();
 
         if (data.status === 'processing') {
+          if (streamLoadingOverlay && data.current_frame > 1) {
+            streamLoadingOverlay.style.display = 'none';
+          }
+
           const cur = data.current_frame || 0;
           const tot = data.total_frames || 1;
           const pct = Math.min(100, Math.round((cur / tot) * 100));
 
-          progressPct.textContent = `${pct}%`;
+          progressPct.textContent = `${pct}% Complete`;
           progressBar.style.width = `${pct}%`;
           metricFrameCount.textContent = `${cur} / ${tot}`;
-          metricFps.textContent = `${data.fps ? data.fps.toFixed(1) : '0.0'} FPS`;
-          metricPlayers.textContent = data.player_count || 0;
-          document.getElementById('progress-status-text').textContent =
-            `Analyzing Frame ${cur} of ${tot} (${data.fps ? data.fps.toFixed(1) : '0.0'} FPS)`;
+          metricFps.textContent = `⚡ ${data.fps ? data.fps.toFixed(1) : '0.0'} FPS`;
+
+          const telem = data.telemetry || {};
+          if (telem.players) {
+            metricPlayers.textContent = telem.players.length;
+          }
+
+          // Update Tactical Space Dominance
+          if (telem.tactics) {
+            const domA = telem.tactics.team_a_control_pct || 50;
+            const domB = telem.tactics.team_b_control_pct || 50;
+            if (liveDomA) {
+              liveDomA.style.width = `${domA}%`;
+              liveDomA.textContent = `${Math.round(domA)}%`;
+            }
+            if (liveDomB) {
+              liveDomB.style.width = `${domB}%`;
+              liveDomB.textContent = `${Math.round(domB)}%`;
+            }
+
+            const possA = telem.tactics.possession_team_a_pct || 50;
+            const possB = telem.tactics.possession_team_b_pct || 50;
+            if (livePossA) {
+              livePossA.style.width = `${possA}%`;
+              livePossA.textContent = `${Math.round(possA)}%`;
+            }
+            if (livePossB) {
+              livePossB.style.width = `${possB}%`;
+              livePossB.textContent = `${Math.round(possB)}%`;
+            }
+          }
+
+          // Update Live HUD Carrier & Ball Speed
+          if (telem.ball) {
+            if (hudCarrierVal) {
+              hudCarrierVal.textContent = telem.ball.carrier_id !== null && telem.ball.carrier_id !== undefined
+                ? `Player #${telem.ball.carrier_id}`
+                : (telem.ball.is_contested ? 'Contested Duel' : 'Loose Ball');
+            }
+            if (hudBallSpeed) {
+              hudBallSpeed.textContent = `${telem.ball.speed_kmh ? telem.ball.speed_kmh.toFixed(1) : '0.0'} km/h`;
+            }
+          }
+
+          // Update Pipeline Stage Latencies
+          if (telem.stage_latencies_ms) {
+            if (latIngest) latIngest.textContent = `${telem.stage_latencies_ms.ingest_ms || 0} ms`;
+            if (latInfer) latInfer.textContent = `${telem.stage_latencies_ms.inference_ms || 0} ms`;
+            if (latAnalytics) latAnalytics.textContent = `${telem.stage_latencies_ms.analytics_ms || 0} ms`;
+            if (latEgress) latEgress.textContent = `${telem.stage_latencies_ms.egress_ms || 0} ms`;
+          }
+
+          // Live Event Detection Toasts & Log Feed
+          if (data.recent_events && data.recent_events.length > 0) {
+            const latestEv = data.recent_events[data.recent_events.length - 1];
+            const evKey = `${latestEv.type}_${latestEv.frame_idx || cur}`;
+
+            if (!seenEventTimestamps.has(evKey)) {
+              seenEventTimestamps.add(evKey);
+
+              // Flash live event banner
+              if (liveEventBanner && bannerEventType && bannerEventDesc) {
+                bannerEventType.textContent = latestEv.type || 'EVENT';
+                bannerEventDesc.textContent = latestEv.description || `${latestEv.type} by ${latestEv.team || 'Player'} (${latestEv.speed_kmh || 0} km/h)`;
+                liveEventBanner.style.display = 'flex';
+
+                if (toastTimeout) clearTimeout(toastTimeout);
+                toastTimeout = setTimeout(() => {
+                  liveEventBanner.style.display = 'none';
+                }, 2500);
+              }
+
+              // Append to live events feed
+              if (liveEventsFeed) {
+                const emptyMsg = liveEventsFeed.querySelector('.event-feed-empty');
+                if (emptyMsg) emptyMsg.remove();
+
+                const item = document.createElement('div');
+                item.className = 'event-feed-item';
+                item.innerHTML = `
+                  <span class="badge badge-${(latestEv.type || 'pass').toLowerCase()}">${latestEv.type}</span>
+                  <span>${latestEv.team || 'Player'}: ${latestEv.description || `${latestEv.distance_m ? latestEv.distance_m + 'm' : ''}`}</span>
+                `;
+                liveEventsFeed.prepend(item);
+              }
+            }
+          }
+
         } else if (data.status === 'completed') {
           clearInterval(pollInterval);
-          progressPct.textContent = '100%';
+          progressPct.textContent = '100% Complete';
           progressBar.style.width = '100%';
           btnProcess.disabled = false;
 
-          // Render match report
-          renderResults(data.results);
+          // Fetch full progress payload with final results
+          const fullRes = await fetch(`/api/progress?task_id=${taskId}`);
+          const fullData = await fullRes.json();
+
+          // Stop live stream and transition to final results
+          if (liveStreamImg) liveStreamImg.src = '';
+          renderResults(fullData.results);
           switchView('results');
+
         } else if (data.status === 'error') {
           clearInterval(pollInterval);
+          if (liveStreamImg) liveStreamImg.src = '';
           alert(`Processing error: ${data.error}`);
           btnProcess.disabled = false;
           switchView('upload');
@@ -1094,7 +1220,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch (err) {
         console.error('Polling error:', err);
       }
-    }, 800);
+    }, 200);
   }
 
   // Render Tactical Report

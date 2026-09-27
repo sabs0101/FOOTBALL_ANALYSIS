@@ -28,6 +28,7 @@ from src.tracking.tracker import PlayerTracker
 from src.tracking.ball_tracker import BallTracker, BallState, PossessionResult
 from src.tracking.cut_detector import CameraCutDetector, CutDetectionResult
 from src.tracking.reid import PlayerReID
+from src.pipeline.async_pipeline import AsyncTacticalPipeline
 from src.utils.config import get_device, load_config
 from src.utils.video import VideoReader, VideoWriter, get_video_properties
 from src.visualization.annotator import VideoAnnotator
@@ -179,6 +180,11 @@ def parse_args() -> argparse.Namespace:
         default=25,
         help="Re-estimate full pitch Hough homography every N frames (and propagate with camera motion on intervening frames)",
     )
+    parser.add_argument(
+        "--async-pipeline",
+        action="store_true",
+        help="Enable 4-stage asynchronous multi-threaded producer-consumer pipeline (Milestone 15)",
+    )
     return parser.parse_args()
 
 
@@ -208,11 +214,12 @@ def run_pipeline(
     draw_pitch_boundary: bool = False,
     draw_trails: bool = True,
     draw_hud: bool = True,
+    async_pipeline: bool = False,
 ) -> Dict[str, Any]:
     """
     Execute end-to-end tactical analysis with Camera Motion Compensation, Camera Cut Detection,
     Player Re-Identification, Discrete Football Match Event Recognition, Kalman Ball Tracking,
-    and Temporal Frame Decoupling (Milestone 14).
+    Temporal Frame Decoupling (Milestone 14), and Async Multi-Threading (Milestone 15).
     """
     config = load_config(config_path)
 
@@ -238,7 +245,7 @@ def run_pipeline(
 
     props = get_video_properties(str(source))
     print(f"\n=======================================================")
-    print(f" AI Football Analysis - Tactical Pipeline (Milestone 10)")
+    print(f" AI Football Analysis - Tactical Pipeline (Milestone 15)")
     print(f"=======================================================")
     print(f" Source Video       : {source.name}")
     print(f" Resolution         : {props['width']}x{props['height']}")
@@ -246,6 +253,7 @@ def run_pipeline(
     print(f" Original FPS       : {props['fps']:.2f}")
     print(f" Output Video       : {output_path}")
     print(f" Model              : {model_name} (conf={conf_threshold}, imgsz={imgsz})")
+    print(f" Architecture       : {'4-Stage Async Ring Buffer (Milestone 15)' if async_pipeline else 'Sequential'}")
     print(f" Camera Motion (CMC): {'Enabled (GME & PTZ Telemetry)' if enable_cmc else 'Disabled'}")
     print(f" Cut Detection/Re-ID: {'Enabled (HSV/Edge Cut + Hungarian Re-ID)' if (enable_cut_detection and enable_reid) else 'Disabled'}")
     print(f" Team Classification: {'Enabled (GK & Coach Refined)' if enable_team else 'Disabled'}")
@@ -255,9 +263,46 @@ def run_pipeline(
     print(f" 2D Tactical Radar  : {'Enabled (Top-Down Minimap)' if enable_radar else 'Disabled'}")
     print(f"=======================================================\n")
 
-    # 0. Preprocessor
     prep_cfg = config.get("preprocessing", {})
     enable_preprocess = prep_cfg.get("enable_clahe", True)
+
+    if async_pipeline:
+        print(f"[Async Pipeline] Launching 4-Stage Multi-Threaded Concurrent Pipeline...")
+        pipeline_opts = {
+            "model": model_name,
+            "conf": conf_threshold,
+            "imgsz": imgsz,
+            "device": preferred_device,
+            "clahe": enable_preprocess,
+            "cmc": enable_cmc,
+            "cut_detect": enable_cut_detection,
+            "reid": enable_reid,
+            "team": enable_team,
+            "radar": enable_radar,
+            "speed": enable_speed,
+            "tactics": enable_tactics,
+            "ball_track": enable_ball_tracking,
+            "events": enable_events,
+            "detector_interval": detector_interval,
+            "sparse_gme": sparse_gme,
+            "homography_interval": homography_interval,
+        }
+        async_pipe = AsyncTacticalPipeline(config=config, options=pipeline_opts)
+        summary = async_pipe.run(source_path=str(source), output_path=output_path)
+
+        log_dir = Path(config["paths"]["log_dir"])
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = log_dir / f"{source.stem}_tactical_master_summary.json"
+        with open(log_path, "w", encoding="utf-8") as f:
+            json.dump(summary, f, indent=2)
+
+        print(f"\n=======================================================")
+        print(f" Async Pipeline Finished in {summary['elapsed_time_s']}s (Average FPS: {summary['average_fps']})")
+        print(f" Output Video : {output_path}")
+        print(f" Summary Log  : {log_path}")
+        print(f" Latencies ms : {summary['stage_latencies_ms']}")
+        print(f"=======================================================\n")
+        return summary
     preprocessor = FramePreprocessor(
         enable_clahe=prep_cfg.get("enable_clahe", True),
         clahe_clip_limit=prep_cfg.get("clahe_clip_limit", 2.0),
@@ -814,4 +859,5 @@ if __name__ == "__main__":
         draw_pitch_boundary=args.draw_pitch_boundary,
         draw_trails=not args.no_trails,
         draw_hud=not args.no_hud,
+        async_pipeline=args.async_pipeline,
     )
