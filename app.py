@@ -85,10 +85,14 @@ def run_pipeline_task(task_id: str, payload: dict):
                 "error": None,
             }
 
+        detector_interval = int(options.get("detector_interval", 1))
+        sparse_gme = bool(options.get("sparse_gme", True))
+        homography_interval = int(options.get("homography_interval", 25))
+
         # Initialize AI Modules
         preprocessor = FramePreprocessor(enable_clahe=enable_clahe) if enable_clahe else None
         detector = PlayerDetector(model_name="models/yolov8m.pt", device=preferred_device, conf_threshold=0.18, imgsz=1280)
-        camera_compensator = CameraMotionCompensator()
+        camera_compensator = CameraMotionCompensator(sparse_mode=sparse_gme)
         cut_detector = CameraCutDetector()
         reid = PlayerReID()
         event_detector = EventDetector(fps=fps)
@@ -132,8 +136,12 @@ def run_pipeline_task(task_id: str, payload: dict):
         team_b_control_list = []
         cut_frames = []
         last_possession = None
+        last_pitch_res = None
+        last_homography_res = None
         start_time = time.time()
-        H_matrix = calibrator.estimate_broadcast_homography((h, w)).H
+        initial_homography = calibrator.estimate_broadcast_homography((h, w))
+        last_homography_res = initial_homography
+        H_matrix = initial_homography.H
 
         for frame_idx, frame in reader:
             t_frame_start = time.time()
@@ -141,13 +149,9 @@ def run_pipeline_task(task_id: str, payload: dict):
             # Preprocessing
             proc_frame = preprocessor.process(frame).frame if preprocessor else frame
 
-            # Detection & Pitch Filter
-            pitch_res = pitch_detector.detect_lines(proc_frame)
-            detections = detector.detect(proc_frame, frame_idx=frame_idx)
-            filtered = pitch_detector.filter_detections_on_pitch(detections, pitch_res.mask)
-
             # Camera Motion Estimation (GME)
-            camera_motion = camera_compensator.estimate_motion(proc_frame, detections=detections, frame_idx=frame_idx)
+            camera_motion = camera_compensator.estimate_motion(proc_frame, detections=None, frame_idx=frame_idx)
+            camera_transform = camera_motion.transform_matrix if enable_cmc else None
 
             # Camera Cut Detection (Milestone 10)
             cut_res = cut_detector.detect_cut(
@@ -155,20 +159,60 @@ def run_pipeline_task(task_id: str, payload: dict):
                 frame_idx=frame_idx,
                 flow_inlier_ratio=camera_motion.confidence if camera_motion else None,
             )
+            is_cut = cut_res.is_cut if enable_reid else False
             if cut_res.is_cut:
                 cut_frames.append(frame_idx)
 
-            # Tracking with CMC and Cut-Aware Re-ID
-            tracked = tracker.update(
-                filtered,
-                camera_transform=camera_motion.transform_matrix if enable_cmc else None,
-                is_cut=cut_res.is_cut if enable_reid else False,
-                reid=reid if enable_reid else None,
-                frame=frame,
+            # Pitch & Line Detection (Interval-based)
+            need_full_pitch = (
+                last_pitch_res is None
+                or is_cut
+                or (homography_interval <= 1)
+                or (frame_idx % homography_interval == 0)
             )
+            if need_full_pitch:
+                pitch_res = pitch_detector.detect_lines(proc_frame)
+                last_pitch_res = pitch_res
+            else:
+                pitch_res = last_pitch_res
+
+            # Temporal Decoupling: Run heavy YOLO on keyframes / cuts only
+            is_keyframe = (detector_interval <= 1) or (frame_idx % detector_interval == 0) or is_cut
+
+            # Tracking with CMC and Decoupled Intervening Propagation
+            if is_keyframe:
+                detections = detector.detect(proc_frame, frame_idx=frame_idx)
+                filtered = pitch_detector.filter_detections_on_pitch(detections, pitch_res.mask)
+                tracked = tracker.update(
+                    filtered,
+                    camera_transform=camera_transform,
+                    is_cut=is_cut,
+                    reid=reid if enable_reid else None,
+                    frame=frame,
+                )
+            else:
+                tracked = tracker.propagate_intervening(
+                    camera_transform=camera_transform,
+                    frame_idx=frame_idx,
+                )
+
             players = tracked.get_players()
             num_players = len(players.xyxy)
             player_counts.append(num_players)
+
+            # Homography propagation
+            if pitch_res.pitch_area_ratio >= 0.20:
+                if need_full_pitch:
+                    homography_res = calibrator.estimate_broadcast_homography((h, w))
+                    last_homography_res = homography_res
+                elif camera_transform is not None and last_homography_res is not None:
+                    homography_res = calibrator.propagate_homography(last_homography_res, camera_transform)
+                    last_homography_res = homography_res
+                else:
+                    homography_res = last_homography_res
+
+                if homography_res is not None and homography_res.is_valid:
+                    H_matrix = homography_res.H
 
             # Player coordinates & metric speed kinematics
             feet = tracked.get_foot_positions()

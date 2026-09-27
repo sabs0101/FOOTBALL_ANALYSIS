@@ -1,8 +1,8 @@
 """
-Camera Movement & Zoom Compensation Module for Football Broadcast Analytics (Milestone 9).
+Camera Movement & Zoom Compensation Module for Football Broadcast Analytics (Milestones 9 & 14).
 Performs Global Motion Estimation (GME) via Lucas-Kanade sparse optical flow with foreground
 player masking, RANSAC affine transformation fitting, Pan-Tilt-Zoom (PTZ) velocity decomposition,
-and Camera Motion Compensation (CMC) for multi-object tracking.
+Sparse High-Speed GME (<1.5ms), and Homography Motion Propagation.
 """
 
 from dataclasses import dataclass
@@ -36,6 +36,7 @@ class CameraMotionCompensator:
     """
     Estimates global camera ego-motion (pan, tilt, zoom) between consecutive video frames
     using sparse Lucas-Kanade optical flow on background pitch features, excluding moving foreground players.
+    Supports Sparse High-Speed GME downscaling (<1.5ms execution).
     """
 
     def __init__(
@@ -49,6 +50,8 @@ class CameraMotionCompensator:
         pan_threshold_px: float = 1.5,
         tilt_threshold_px: float = 1.2,
         zoom_threshold: float = 0.006,
+        sparse_mode: bool = True,
+        downscale_factor: float = 0.50,
     ):
         self.max_features = max_features
         self.quality_level = quality_level
@@ -59,12 +62,14 @@ class CameraMotionCompensator:
         self.pan_threshold_px = pan_threshold_px
         self.tilt_threshold_px = tilt_threshold_px
         self.zoom_threshold = zoom_threshold
+        self.sparse_mode = sparse_mode
+        self.downscale_factor = downscale_factor
 
         # LK Optical Flow parameters
         self.lk_params = dict(
-            winSize=(21, 21),
-            maxLevel=3,
-            criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 20, 0.03),
+            winSize=(15, 15) if sparse_mode else (21, 21),
+            maxLevel=2 if sparse_mode else 3,
+            criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 15 if sparse_mode else 20, 0.03),
         )
 
         # State cache
@@ -79,6 +84,7 @@ class CameraMotionCompensator:
         gray_shape: Tuple[int, int],
         detections: Optional[DetectionResult] = None,
         margin: int = 15,
+        scale: float = 1.0,
     ) -> np.ndarray:
         """
         Create a binary mask where foreground moving players and referees are zeroed out,
@@ -93,10 +99,10 @@ class CameraMotionCompensator:
         # Mask out player bounding boxes with padding
         if detections is not None and len(detections.xyxy) > 0:
             for box in detections.xyxy:
-                x1 = max(0, int(box[0]) - margin)
-                y1 = max(0, int(box[1]) - margin)
-                x2 = min(w, int(box[2]) + margin)
-                y2 = min(h, int(box[3]) + margin)
+                x1 = max(0, int((box[0] - margin) * scale))
+                y1 = max(0, int((box[1] - margin) * scale))
+                x2 = min(w, int((box[2] + margin) * scale))
+                y2 = min(h, int((box[3] + margin) * scale))
                 mask[y1:y2, x1:x2] = 0
 
         return mask
@@ -122,9 +128,25 @@ class CameraMotionCompensator:
         """
         Estimate inter-frame camera pan, tilt, zoom, and affine transform matrix from frame t-1 to t.
         """
-        curr_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
+        # Convert to grayscale
+        curr_full_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
+
+        # Apply downscaling for Sparse High-Speed GME if enabled
+        if self.sparse_mode and self.downscale_factor < 1.0:
+            scale = self.downscale_factor
+            curr_gray = cv2.resize(
+                curr_full_gray,
+                (0, 0),
+                fx=scale,
+                fy=scale,
+                interpolation=cv2.INTER_LINEAR,
+            )
+        else:
+            scale = 1.0
+            curr_gray = curr_full_gray
+
         h, w = curr_gray.shape
-        bg_mask = self._create_background_mask((h, w), detections)
+        bg_mask = self._create_background_mask((h, w), detections, scale=scale)
 
         # Initial frame handling
         if self.prev_gray is None or self.prev_features is None or len(self.prev_features) < 10:
@@ -164,7 +186,7 @@ class CameraMotionCompensator:
                 good_curr,
                 method=cv2.RANSAC,
                 ransacReprojThreshold=self.ransac_threshold,
-                maxIters=1000,
+                maxIters=500 if self.sparse_mode else 1000,
             )
             if inliers is not None:
                 inlier_ratio = float(np.sum(inliers)) / float(len(inliers))
@@ -175,9 +197,11 @@ class CameraMotionCompensator:
             raw_dx, raw_dy, raw_scale, raw_rot = 0.0, 0.0, 1.0, 0.0
         else:
             is_valid = True
-            # Decompose affine matrix:
-            # M = [[s * cos(theta), -s * sin(theta), dx],
-            #      [s * sin(theta),  s * cos(theta), dy]]
+            # Rescale translation components if downscaling was applied
+            if scale != 1.0:
+                affine_mat[0, 2] /= scale
+                affine_mat[1, 2] /= scale
+
             raw_dx = float(affine_mat[0, 2])
             raw_dy = float(affine_mat[1, 2])
             raw_scale = float(np.hypot(affine_mat[0, 0], affine_mat[1, 0]))
@@ -189,7 +213,6 @@ class CameraMotionCompensator:
         self.smoothed_zoom = self.smoothing_alpha * raw_scale + (1.0 - self.smoothing_alpha) * self.smoothed_zoom
 
         # 4. Motion Classification (Physical PTZ Directions)
-        # Note: If image moves left (dx < 0), camera panned right. If image moves right (dx > 0), camera panned left.
         if raw_dx < -self.pan_threshold_px:
             pan_dir = "PAN RIGHT"
         elif raw_dx > self.pan_threshold_px:
@@ -197,7 +220,6 @@ class CameraMotionCompensator:
         else:
             pan_dir = "STATIC"
 
-        # If image moves up (dy < 0), camera tilted down. If image moves down (dy > 0), camera tilted up.
         if raw_dy < -self.tilt_threshold_px:
             tilt_dir = "TILT DOWN"
         elif raw_dy > self.tilt_threshold_px:
@@ -214,8 +236,8 @@ class CameraMotionCompensator:
 
         # Update cache for next frame
         self.prev_gray = curr_gray.copy()
-        # Re-detect background features if count is running low
-        if len(good_curr) < 60:
+        min_pts_threshold = 40 if self.sparse_mode else 60
+        if len(good_curr) < min_pts_threshold:
             self.prev_features = self._detect_features(curr_gray, bg_mask)
         else:
             self.prev_features = good_curr.reshape(-1, 1, 2)
@@ -273,3 +295,26 @@ class CameraMotionCompensator:
             ], dtype=np.float32)
 
         return warped_boxes
+
+    @staticmethod
+    def propagate_homography(H_prev: np.ndarray, transform_matrix: np.ndarray) -> np.ndarray:
+        """
+        Propagate pitch homography matrix H_{t-1} to current frame H_t using camera motion.
+        H_t = H_{t-1} * T_{motion}^{-1}
+        """
+        if H_prev is None or transform_matrix is None:
+            return H_prev
+
+        # Construct 3x3 affine matrix T
+        T = np.eye(3, dtype=np.float32)
+        T[:2, :3] = transform_matrix[:2, :3]
+
+        try:
+            T_inv = np.linalg.inv(T)
+            H_curr = np.dot(H_prev, T_inv)
+            # Normalize so H[2, 2] = 1.0
+            if abs(H_curr[2, 2]) > 1e-6:
+                H_curr /= H_curr[2, 2]
+            return H_curr.astype(np.float32)
+        except np.linalg.LinAlgError:
+            return H_prev

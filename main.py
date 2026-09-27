@@ -160,6 +160,25 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Disable HUD overlay in output video",
     )
+    parser.add_argument(
+        "--detector-interval",
+        type=int,
+        default=1,
+        help="Run heavy neural detector every K frames (e.g. 2 or 3 for 50-60+ FPS real-time decoupling)",
+    )
+    parser.add_argument(
+        "--no-sparse-gme",
+        action="store_false",
+        dest="sparse_gme",
+        default=True,
+        help="Disable fast 0.5x pyramidal downscaled sparse GME",
+    )
+    parser.add_argument(
+        "--homography-interval",
+        type=int,
+        default=25,
+        help="Re-estimate full pitch Hough homography every N frames (and propagate with camera motion on intervening frames)",
+    )
     return parser.parse_args()
 
 
@@ -182,6 +201,9 @@ def run_pipeline(
     enable_cut_detection: bool = True,
     enable_reid: bool = True,
     enable_events: bool = True,
+    detector_interval: int = 1,
+    sparse_gme: bool = True,
+    homography_interval: int = 25,
     draw_pitch_lines: bool = False,
     draw_pitch_boundary: bool = False,
     draw_trails: bool = True,
@@ -189,7 +211,8 @@ def run_pipeline(
 ) -> Dict[str, Any]:
     """
     Execute end-to-end tactical analysis with Camera Motion Compensation, Camera Cut Detection,
-    Player Re-Identification, Discrete Football Match Event Recognition, Kalman Ball Tracking, and Possession Assignment.
+    Player Re-Identification, Discrete Football Match Event Recognition, Kalman Ball Tracking,
+    and Temporal Frame Decoupling (Milestone 14).
     """
     config = load_config(config_path)
 
@@ -256,8 +279,8 @@ def run_pipeline(
         filter_classes=filter_classes,
     )
 
-    # 2. Camera Motion Compensator & Cut/Re-ID Engines (Milestones 9 & 10)
-    camera_compensator = CameraMotionCompensator() if enable_cmc else None
+    # 2. Camera Motion Compensator & Cut/Re-ID Engines (Milestones 9, 10 & 14)
+    camera_compensator = CameraMotionCompensator(sparse_mode=sparse_gme) if enable_cmc else None
     cut_detector = CameraCutDetector() if enable_cut_detection else None
     reid = PlayerReID() if enable_reid else None
 
@@ -379,8 +402,10 @@ def run_pipeline(
     pan_events = {"PAN RIGHT": 0, "PAN LEFT": 0, "STATIC": 0}
     cut_events = []
     last_possession_result: Optional[PossessionResult] = None
+    last_pitch_result: Optional[PitchResult] = None
+    last_homography_res: Optional[HomographyResult] = None
 
-    print(f"[Processing] Running Master Tactical Pipeline across {total_frames} frames...")
+    print(f"[Processing] Running Master Tactical Pipeline across {total_frames} frames (Interval: {detector_interval}, Sparse GME: {sparse_gme})...")
 
     try:
         for frame_idx, frame in tqdm(reader, total=total_frames, desc="Tactical Master Pipeline"):
@@ -389,55 +414,85 @@ def run_pipeline(
             # Step 0: Preprocessing & Contrast Enhancement
             proc_frame = preprocessor.process(frame).frame if preprocessor is not None else frame
 
-            # Step 1: Pitch & Line Detection
-            pitch_result = pitch_detector.detect_lines(proc_frame)
-            if pitch_result.pitch_area_ratio >= 0.20:
-                pitch_detected_count += 1
-
-            # Step 2: YOLO Detection (imgsz=1280)
-            detections = detector.detect(proc_frame, frame_idx=frame_idx)
-
-            # Step 3: Touchline-bounded Crowd & Dugout Filtering
-            if enable_pitch_filter and pitch_result.pitch_area_ratio >= 0.20:
-                detections = pitch_detector.filter_detections_on_pitch(detections, pitch_result.mask)
-
-            # Step 4: Camera Motion Estimation (GME)
+            # Step 1: Camera Motion Estimation (GME)
             camera_motion = None
             camera_transform = None
             if camera_compensator is not None:
                 camera_motion = camera_compensator.estimate_motion(
                     proc_frame,
-                    detections=detections,
+                    detections=None,
                     frame_idx=frame_idx,
                 )
                 camera_transform = camera_motion.transform_matrix
                 pan_events[camera_motion.pan_direction] = pan_events.get(camera_motion.pan_direction, 0) + 1
 
-            # Step 4.5: Camera Cut Detection (Milestone 10)
+            # Step 1.5: Camera Cut Detection (Milestone 10)
             cut_result = None
+            is_cut = False
             if cut_detector is not None:
                 cut_result = cut_detector.detect_cut(
                     proc_frame,
                     frame_idx=frame_idx,
                     flow_inlier_ratio=camera_motion.confidence if camera_motion else None,
                 )
-                if cut_result.is_cut:
+                is_cut = cut_result.is_cut
+                if is_cut:
                     cut_events.append(frame_idx)
 
-            # Step 5: Multi-Object Tracking (ByteTrack + CMC + Cut-Aware Re-ID)
+            # Step 2: Pitch & Line Detection (Interval-based)
+            need_full_pitch = (
+                last_pitch_result is None
+                or is_cut
+                or (homography_interval <= 1)
+                or (frame_idx % homography_interval == 0)
+            )
+            if need_full_pitch:
+                pitch_result = pitch_detector.detect_lines(proc_frame)
+                last_pitch_result = pitch_result
+            else:
+                pitch_result = last_pitch_result
+
+            if pitch_result.pitch_area_ratio >= 0.20:
+                pitch_detected_count += 1
+
+            # Step 3: Temporal Detector Decoupling (Interval YOLO)
+            is_keyframe = (detector_interval <= 1) or (frame_idx % detector_interval == 0) or is_cut
+
+            # Step 4: Multi-Object Tracking (ByteTrack + CMC + Decoupled Intervening Propagation)
             if tracker is not None:
-                processed_results = tracker.update(
-                    detections,
-                    camera_transform=camera_transform,
-                    is_cut=cut_result.is_cut if cut_result else False,
-                    reid=reid,
-                    frame=frame,
-                )
+                if is_keyframe:
+                    detections = detector.detect(proc_frame, frame_idx=frame_idx)
+                    if enable_pitch_filter and pitch_result.pitch_area_ratio >= 0.20:
+                        detections = pitch_detector.filter_detections_on_pitch(detections, pitch_result.mask)
+                    processed_results = tracker.update(
+                        detections,
+                        camera_transform=camera_transform,
+                        is_cut=is_cut,
+                        reid=reid,
+                        frame=frame,
+                    )
+                else:
+                    processed_results = tracker.propagate_intervening(
+                        camera_transform=camera_transform,
+                        frame_idx=frame_idx,
+                    )
                 for tid in processed_results.tracker_ids:
                     if tid >= 0:
                         unique_track_ids.add(int(tid))
             else:
-                processed_results = detections
+                if is_keyframe:
+                    detections = detector.detect(proc_frame, frame_idx=frame_idx)
+                    if enable_pitch_filter and pitch_result.pitch_area_ratio >= 0.20:
+                        detections = pitch_detector.filter_detections_on_pitch(detections, pitch_result.mask)
+                    processed_results = detections
+                else:
+                    processed_results = DetectionResult(
+                        xyxy=np.empty((0, 4), dtype=np.float32),
+                        confidences=np.empty((0,), dtype=np.float32),
+                        class_ids=np.empty((0,), dtype=int),
+                        class_names=[],
+                        frame_idx=frame_idx,
+                    )
 
             players_res = processed_results.get_players()
             num_players = len(players_res.xyxy)
@@ -448,24 +503,32 @@ def run_pipeline(
             if has_ball:
                 ball_detected_count += 1
 
-            # Step 6: Homography & Metric Coordinates Calculation
+            # Step 5: Homography & Metric Coordinates Calculation
             player_positions_m = np.empty((0, 2), dtype=np.float32)
             ball_pos_m = None
             H_matrix = None
 
-            if pitch_result.pitch_area_ratio >= 0.20 and num_players > 0:
-                homography_res = calibrator.estimate_broadcast_homography(
-                    frame_shape=(props["height"], props["width"]),
-                    top_touchline_y=245.0,
-                    bottom_touchline_y=745.0,
-                    halfway_x=960.0,
-                    center_y=500.0,
-                )
+            if pitch_result.pitch_area_ratio >= 0.20:
+                if need_full_pitch or last_homography_res is None:
+                    homography_res = calibrator.estimate_broadcast_homography(
+                        frame_shape=(props["height"], props["width"]),
+                        top_touchline_y=245.0,
+                        bottom_touchline_y=745.0,
+                        halfway_x=960.0,
+                        center_y=500.0,
+                    )
+                    last_homography_res = homography_res
+                elif camera_transform is not None and last_homography_res is not None:
+                    homography_res = calibrator.propagate_homography(last_homography_res, camera_transform)
+                    last_homography_res = homography_res
+                else:
+                    homography_res = last_homography_res
 
-                if homography_res.is_valid:
+                if homography_res is not None and homography_res.is_valid:
                     H_matrix = homography_res.H
-                    feet_pts = players_res.get_foot_positions()
-                    player_positions_m = calibrator.image_to_pitch(feet_pts, homography_res.H)
+                    if num_players > 0:
+                        feet_pts = players_res.get_foot_positions()
+                        player_positions_m = calibrator.image_to_pitch(feet_pts, homography_res.H)
 
                     if has_ball:
                         ball_box = ball_res.xyxy[0]
@@ -744,6 +807,9 @@ if __name__ == "__main__":
         enable_cut_detection=not args.no_cut_detect,
         enable_reid=not args.no_reid,
         enable_events=not args.no_events,
+        detector_interval=args.detector_interval,
+        sparse_gme=args.sparse_gme,
+        homography_interval=args.homography_interval,
         draw_pitch_lines=args.draw_pitch_lines,
         draw_pitch_boundary=args.draw_pitch_boundary,
         draw_trails=not args.no_trails,

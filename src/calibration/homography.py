@@ -1,6 +1,7 @@
 """
-Homography Estimation and Coordinate Transformation Module.
-Computes 3x3 Homography Matrix (H) mapping 2D camera pixels to FIFA 2D pitch meters.
+Homography Estimation and Coordinate Transformation Module (Milestones 4 & 14).
+Computes 3x3 Homography Matrix (H) mapping 2D camera pixels to FIFA 2D pitch meters,
+and supports rapid interval-based motion propagation.
 """
 
 from dataclasses import dataclass
@@ -80,6 +81,38 @@ class PitchHomography:
             dst_points=dst.reshape(-1, 2),
             is_valid=True,
         )
+
+    def propagate_homography(
+        self,
+        homography: Union[HomographyResult, np.ndarray],
+        transform_matrix: np.ndarray,
+    ) -> HomographyResult:
+        """
+        Propagate pitch homography matrix H_{t-1} using inter-frame camera motion transform.
+        H_t = H_{t-1} * T_{motion}^{-1}
+        """
+        if homography is None or transform_matrix is None:
+            return homography
+
+        H_prev = homography.H if hasattr(homography, "H") else homography
+        T = np.eye(3, dtype=np.float32)
+        T[:2, :3] = transform_matrix[:2, :3]
+
+        try:
+            T_inv = np.linalg.inv(T)
+            H_curr = np.dot(H_prev, T_inv)
+            if abs(H_curr[2, 2]) > 1e-6:
+                H_curr /= H_curr[2, 2]
+            H_curr = H_curr.astype(np.float32)
+            H_inv = np.linalg.inv(H_curr).astype(np.float32)
+            return HomographyResult(
+                H=H_curr,
+                H_inv=H_inv,
+                reprojection_error=getattr(homography, "reprojection_error", 0.0),
+                is_valid=True,
+            )
+        except Exception:
+            return homography
 
     def image_to_pitch(self, points_image: np.ndarray, H: Any) -> np.ndarray:
         """
