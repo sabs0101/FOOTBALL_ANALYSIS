@@ -450,12 +450,21 @@ class DashboardHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
                             fn_match = re.search(r'filename="([^"]+)"', header_part)
                             if fn_match:
                                 raw_name = Path(fn_match.group(1)).name
-                                filename = "".join(c for c in raw_name if c.isalnum() or c in "._- ") or filename
+                                ext = Path(raw_name).suffix or ".mp4"
+                                stem = Path(raw_name).stem
+                                clean_stem = "".join(c for c in stem if c.isalnum() or c in "._- ") or "upload"
+                                filename = f"{clean_stem}_{int(time.time())}{ext}"
 
                             body_start = header_end + 4
-                            trailing_marker = b"\r\n--" + boundary_bytes
-                            body_end = raw_data.rfind(trailing_marker)
-                            if body_end == -1:
+                            
+                            # Find boundary end marker
+                            body_end = raw_data.rfind(b"--" + boundary_bytes)
+                            if body_end != -1:
+                                if raw_data[body_end-2:body_end] == b"\r\n":
+                                    body_end -= 2
+                                elif raw_data[body_end-1:body_end] == b"\n":
+                                    body_end -= 1
+                            else:
                                 body_end = len(raw_data)
 
                             file_bytes = raw_data[body_start:body_end]
@@ -465,12 +474,32 @@ class DashboardHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
 
                     if saved_path and saved_path.exists() and saved_path.stat().st_size > 0:
                         saved_str = str(saved_path).replace("\\", "/")
+                        size_b = saved_path.stat().st_size
+                        size_mb = round(size_b / (1024 * 1024), 2)
+                        
+                        fps = 25.0
+                        frames = 0
+                        width, height = 1920, 1080
+                        try:
+                            props = get_video_properties(str(saved_path))
+                            fps = props.get("fps", 25.0)
+                            frames = props.get("frame_count", 0)
+                            width = props.get("width", 1920)
+                            height = props.get("height", 1080)
+                        except Exception:
+                            pass
+
                         self._send_json({
                             "status": "success",
                             "filename": filename,
                             "filepath": saved_str,
                             "path": saved_str,
-                            "size_bytes": saved_path.stat().st_size,
+                            "size_bytes": size_b,
+                            "size_mb": size_mb,
+                            "fps": fps,
+                            "frames": frames,
+                            "width": width,
+                            "height": height,
                         })
                     else:
                         self._send_json({"status": "error", "message": "Failed to parse uploaded file"}, 400)

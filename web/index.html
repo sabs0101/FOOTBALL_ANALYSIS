@@ -99,35 +99,130 @@
       </section>
 
       <div class="main-grid">
-        <!-- LEFT: Drag & Drop Dropzone -->
+      <!-- Mode Switcher Tabs -->
+      <div class="analysis-mode-selector" style="margin-bottom: 24px;">
+        <div class="mode-tabs-wrapper" style="display: flex; gap: 12px; background: rgba(14, 19, 29, 0.85); border: 1px solid var(--border-subtle); padding: 6px; border-radius: 16px; backdrop-filter: blur(16px); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);">
+          <button type="button" class="mode-tab-btn active" id="tab-mode-upload" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 12px 18px; border-radius: 12px; border: 1px solid var(--accent-emerald); background: rgba(0, 229, 153, 0.15); color: var(--accent-emerald); font-family: var(--font-display); font-size: 13.5px; font-weight: 700; cursor: pointer; transition: all 0.25s ease;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+            <span>📁 Drag & Drop Video File</span>
+          </button>
+          <button type="button" class="mode-tab-btn" id="tab-mode-stream" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 12px 18px; border-radius: 12px; border: 1px solid var(--border-subtle); background: var(--bg-surface); color: var(--text-secondary); font-family: var(--font-display); font-size: 13.5px; font-weight: 700; cursor: pointer; transition: all 0.25s ease;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+            <span>⚡ Real-Time Live Streaming</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="main-grid">
+        <!-- LEFT: Video Source Configuration (Drag & Drop or Stream) -->
         <div class="glass-card">
-          <div class="dropzone" id="dropzone">
-            <input type="file" id="file-input" accept="video/mp4,video/avi,video/mov,video/mkv" style="display: none;">
-            <div class="dropzone-icon">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="17 8 12 3 7 8"></polyline>
-                <line x1="12" y1="3" x2="12" y2="15"></line>
-              </svg>
+          <!-- MODE 1: Drag & Drop Video File Panel -->
+          <div id="panel-mode-upload" class="mode-panel active">
+            <div class="dropzone" id="dropzone" style="cursor: pointer; position: relative;">
+              <input type="file" id="file-input" accept="video/mp4,video/avi,video/mov,video/mkv,video/webm" style="display: none;">
+              <div class="dropzone-icon">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="17 8 12 3 7 8"></polyline>
+                  <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+              </div>
+              <div class="dropzone-text" id="dropzone-prompt">
+                <h3>Drag & Drop Match Video</h3>
+                <p>Drop your MP4, MOV, AVI, or MKV file here or <span style="color: var(--accent-emerald); text-decoration: underline; font-weight: 600;">Browse from Computer</span></p>
+                <span style="display: block; font-size: 11px; color: var(--text-muted); margin-top: 6px;">Supports 1080p, 4K, 720p broadcast match footage</span>
+              </div>
+
+              <!-- Selected File Card Preview -->
+              <div id="file-selected-box" style="display: none; width: 100%; text-align: left; padding: 14px; background: rgba(0, 229, 153, 0.08); border: 1px solid rgba(0, 229, 153, 0.35); border-radius: 12px; margin-top: 10px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                  <div style="display: flex; align-items: center; gap: 10px; overflow: hidden;">
+                    <div style="width: 38px; height: 38px; border-radius: 8px; background: rgba(0, 229, 153, 0.2); display: flex; align-items: center; justify-content: center; color: var(--accent-emerald); flex-shrink: 0;">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                        <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                      </svg>
+                    </div>
+                    <div style="overflow: hidden;">
+                      <strong id="selected-file-name" style="display: block; font-size: 13px; color: #FFF; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">video.mp4</strong>
+                      <span id="selected-file-meta" style="font-size: 11px; color: var(--accent-emerald);">Ready for Tactical Processing • 0.0 MB</span>
+                    </div>
+                  </div>
+                  <button type="button" id="btn-remove-file" style="padding: 6px 10px; border-radius: 6px; background: rgba(255, 68, 68, 0.15); border: 1px solid rgba(255, 68, 68, 0.3); color: #FF6B6B; font-size: 11px; cursor: pointer; flex-shrink: 0;">
+                    Remove
+                  </button>
+                </div>
+                <!-- File Upload Progress Bar -->
+                <div id="upload-progress-container" style="display: none; margin-top: 8px;">
+                  <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px; color: var(--text-secondary);">
+                    <span id="upload-status-label">Uploading video to server...</span>
+                    <span id="upload-pct-label">0%</span>
+                  </div>
+                  <div style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
+                    <div id="upload-progress-fill" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent-emerald), var(--accent-cyan)); transition: width 0.2s ease;"></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="dropzone-file-info" id="file-info"></div>
             </div>
-            <div class="dropzone-text">
-              <h3>Drop Match Video Here</h3>
-              <p>Supports MP4, AVI, MOV, MKV (1080p / 720p 25-60 FPS)</p>
+
+            <!-- Quick-Pick Benchmark Matches -->
+            <div class="preset-section">
+              <span class="section-label">Or Select Benchmark Sample Match</span>
+              <div class="preset-grid">
+                <div class="preset-card active" data-source="data/videos/sample_broadcast.mp4" id="preset-1">
+                  <h4>Bundesliga Match #1</h4>
+                  <span>1920x1080 • 750 Frames • Broadcast Tactical</span>
+                </div>
+                <div class="preset-card" data-source="data/videos/sample_match_2.mp4" id="preset-2">
+                  <h4>Broadcast Sample #2</h4>
+                  <span>638x402 • 138 Frames • Fast Transition</span>
+                </div>
+              </div>
             </div>
-            <div class="dropzone-file-info" id="file-info"></div>
           </div>
 
-          <!-- Quick-Pick Sample Videos -->
-          <div class="preset-section">
-            <span class="section-label">Or Select Benchmark Sample Match</span>
-            <div class="preset-grid">
-              <div class="preset-card active" data-source="data/videos/sample_broadcast.mp4" id="preset-1">
-                <h4>Bundesliga Match #1</h4>
-                <span>1920x1080 • 750 Frames • Broadcast Tactical</span>
+          <!-- MODE 2: Real-Time Live Streaming Panel -->
+          <div id="panel-mode-stream" class="mode-panel" style="display: none;">
+            <div style="padding: 16px; background: rgba(0, 229, 153, 0.05); border: 1px solid rgba(0, 229, 153, 0.25); border-radius: 14px; margin-bottom: 20px;">
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                <span class="pulse-beacon-emerald"></span>
+                <strong style="color: var(--accent-emerald); font-size: 13px;">Live Tactical Ingestion Active</strong>
               </div>
-              <div class="preset-card" data-source="data/videos/sample_match_2.mp4" id="preset-2">
-                <h4>Broadcast Sample #2</h4>
-                <span>638x402 • 138 Frames • Fast Transition</span>
+              <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.5;">
+                Streams raw match broadcast frames through the GPU tactical pipeline with live 2D radar, space dominance telemetry, and instant event toasts.
+              </p>
+
+              <span class="section-label" style="margin-bottom: 8px;">Select Live Feed Source</span>
+              <div class="preset-grid" style="margin-bottom: 14px;">
+                <div class="preset-card active stream-preset" data-source="data/videos/sample_broadcast.mp4" id="stream-preset-1">
+                  <h4>📡 Main Stadium Feed #1</h4>
+                  <span>1080p 60 FPS • Broadcast Camera</span>
+                </div>
+                <div class="preset-card stream-preset" data-source="data/videos/sample_match_2.mp4" id="stream-preset-2">
+                  <h4>📡 Tactical Cam #2</h4>
+                  <span>Wide Angle • Fast Counter-Attack</span>
+                </div>
+              </div>
+
+              <!-- Custom Stream URL input -->
+              <div style="margin-top: 12px;">
+                <label style="display: block; font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px;">
+                  Custom RTSP / HTTP Video Stream URL
+                </label>
+                <div style="display: flex; gap: 8px;">
+                  <input type="text" id="stream-url-input" placeholder="e.g. rtsp://camera.stadium.local/live or http://..." style="flex: 1; padding: 10px 14px; border-radius: 8px; background: rgba(8, 11, 16, 0.8); border: 1px solid var(--border-subtle); color: #FFF; font-size: 12px; font-family: var(--font-mono);">
+                  <button type="button" id="btn-apply-stream-url" style="padding: 10px 14px; border-radius: 8px; background: rgba(0, 229, 153, 0.2); border: 1px solid var(--accent-emerald); color: var(--accent-emerald); font-size: 12px; font-weight: 600; cursor: pointer;">
+                    Apply URL
+                  </button>
+                </div>
               </div>
             </div>
           </div>

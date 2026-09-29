@@ -867,13 +867,34 @@ document.addEventListener('DOMContentLoaded', () => {
   new FootballKickCinematic('kick-canvas');
   init3DCardParallax();
 
-  // DOM Elements
+  // DOM Elements - Mode Switcher & Source Panels
+  const tabModeUpload = document.getElementById('tab-mode-upload');
+  const tabModeStream = document.getElementById('tab-mode-stream');
+  const panelModeUpload = document.getElementById('panel-mode-upload');
+  const panelModeStream = document.getElementById('panel-mode-stream');
+
+  // Drag & Drop File Elements
   const dropzone = document.getElementById('dropzone');
+  const dropzonePrompt = document.getElementById('dropzone-prompt');
   const fileInput = document.getElementById('file-input');
+  const fileSelectedBox = document.getElementById('file-selected-box');
+  const selectedFileName = document.getElementById('selected-file-name');
+  const selectedFileMeta = document.getElementById('selected-file-meta');
+  const btnRemoveFile = document.getElementById('btn-remove-file');
+  const uploadProgressContainer = document.getElementById('upload-progress-container');
+  const uploadStatusLabel = document.getElementById('upload-status-label');
+  const uploadPctLabel = document.getElementById('upload-pct-label');
+  const uploadProgressFill = document.getElementById('upload-progress-fill');
   const fileInfo = document.getElementById('file-info');
-  const btnProcess = document.getElementById('btn-process');
+
+  // Presets
   const preset1 = document.getElementById('preset-1');
   const preset2 = document.getElementById('preset-2');
+  const streamPreset1 = document.getElementById('stream-preset-1');
+  const streamPreset2 = document.getElementById('stream-preset-2');
+  const streamUrlInput = document.getElementById('stream-url-input');
+  const btnApplyStreamUrl = document.getElementById('btn-apply-stream-url');
+  const btnProcess = document.getElementById('btn-process');
 
   // Views
   const viewUpload = document.getElementById('view-upload');
@@ -906,29 +927,67 @@ document.addEventListener('DOMContentLoaded', () => {
   const tabBtns = document.querySelectorAll('.tab-btn');
 
   // State
+  let activeAnalysisMode = 'upload'; // 'upload' | 'stream'
   let currentVideoSource = 'data/videos/sample_broadcast.mp4';
   let uploadedFile = null;
   let pollInterval = null;
 
-  // Preset Selection
-  preset1.addEventListener('click', () => {
-    preset1.classList.add('active');
-    preset2.classList.remove('active');
-    currentVideoSource = 'data/videos/sample_broadcast.mp4';
-    uploadedFile = null;
-    fileInfo.style.display = 'none';
-  });
+  // 1. Mode Switcher Handler
+  function setAnalysisMode(mode) {
+    activeAnalysisMode = mode;
+    if (mode === 'upload') {
+      tabModeUpload.classList.add('active');
+      tabModeUpload.style.background = 'rgba(0, 229, 153, 0.15)';
+      tabModeUpload.style.borderColor = 'var(--accent-emerald)';
+      tabModeUpload.style.color = 'var(--accent-emerald)';
 
-  preset2.addEventListener('click', () => {
-    preset2.classList.add('active');
-    preset1.classList.remove('active');
-    currentVideoSource = 'data/videos/sample_match_2.mp4';
-    uploadedFile = null;
-    fileInfo.style.display = 'none';
-  });
+      tabModeStream.classList.remove('active');
+      tabModeStream.style.background = 'var(--bg-surface)';
+      tabModeStream.style.borderColor = 'var(--border-subtle)';
+      tabModeStream.style.color = 'var(--text-secondary)';
 
-  // Drag and Drop Events
-  dropzone.addEventListener('click', () => fileInput.click());
+      panelModeUpload.style.display = 'block';
+      panelModeStream.style.display = 'none';
+
+      btnProcess.innerHTML = `
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="17 8 12 3 7 8"></polyline>
+          <line x1="12" y1="3" x2="12" y2="15"></line>
+        </svg>
+        Start Tactical Video Analysis
+      `;
+    } else {
+      tabModeStream.classList.add('active');
+      tabModeStream.style.background = 'rgba(0, 229, 153, 0.15)';
+      tabModeStream.style.borderColor = 'var(--accent-emerald)';
+      tabModeStream.style.color = 'var(--accent-emerald)';
+
+      tabModeUpload.classList.remove('active');
+      tabModeUpload.style.background = 'var(--bg-surface)';
+      tabModeUpload.style.borderColor = 'var(--border-subtle)';
+      tabModeUpload.style.color = 'var(--text-secondary)';
+
+      panelModeStream.style.display = 'block';
+      panelModeUpload.style.display = 'none';
+
+      btnProcess.innerHTML = `
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="5 3 19 12 5 21 5 3"></polygon>
+        </svg>
+        Start Live Tactical Stream
+      `;
+    }
+  }
+
+  tabModeUpload.addEventListener('click', () => setAnalysisMode('upload'));
+  tabModeStream.addEventListener('click', () => setAnalysisMode('stream'));
+
+  // 2. Drag & Drop File Handling
+  dropzone.addEventListener('click', (e) => {
+    if (e.target.id === 'btn-remove-file' || e.target.closest('#btn-remove-file')) return;
+    fileInput.click();
+  });
 
   ['dragenter', 'dragover'].forEach(eventName => {
     dropzone.addEventListener(eventName, (e) => {
@@ -946,23 +1005,95 @@ document.addEventListener('DOMContentLoaded', () => {
 
   dropzone.addEventListener('drop', (e) => {
     const files = e.dataTransfer.files;
-    if (files.length > 0) {
+    if (files && files.length > 0) {
       handleSelectedFile(files[0]);
     }
   });
 
   fileInput.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) {
+    if (e.target.files && e.target.files.length > 0) {
       handleSelectedFile(e.target.files[0]);
     }
   });
 
   function handleSelectedFile(file) {
+    const validExts = ['.mp4', '.mov', '.avi', '.mkv', '.webm'];
+    const lowerName = file.name.toLowerCase();
+    const isValid = validExts.some(ext => lowerName.endsWith(ext)) || file.type.startsWith('video/');
+
+    if (!isValid) {
+      alert('Please select a valid video file (.mp4, .mov, .avi, .mkv, .webm)');
+      return;
+    }
+
     uploadedFile = file;
+    const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+
+    selectedFileName.textContent = file.name;
+    selectedFileMeta.textContent = `Ready for Tactical Processing • ${sizeMb} MB`;
+
+    dropzonePrompt.style.display = 'none';
+    fileSelectedBox.style.display = 'block';
+    if (uploadProgressContainer) uploadProgressContainer.style.display = 'none';
+
     preset1.classList.remove('active');
     preset2.classList.remove('active');
-    fileInfo.textContent = `Selected: ${file.name} (${(file.size / (1024 * 1024)).toFixed(1)} MB)`;
-    fileInfo.style.display = 'block';
+  }
+
+  btnRemoveFile.addEventListener('click', (e) => {
+    e.stopPropagation();
+    uploadedFile = null;
+    fileInput.value = '';
+    fileSelectedBox.style.display = 'none';
+    dropzonePrompt.style.display = 'block';
+    preset1.classList.add('active');
+    currentVideoSource = 'data/videos/sample_broadcast.mp4';
+  });
+
+  // 3. Preset Selections
+  preset1.addEventListener('click', () => {
+    preset1.classList.add('active');
+    preset2.classList.remove('active');
+    currentVideoSource = 'data/videos/sample_broadcast.mp4';
+    uploadedFile = null;
+    fileSelectedBox.style.display = 'none';
+    dropzonePrompt.style.display = 'block';
+  });
+
+  preset2.addEventListener('click', () => {
+    preset2.classList.add('active');
+    preset1.classList.remove('active');
+    currentVideoSource = 'data/videos/sample_match_2.mp4';
+    uploadedFile = null;
+    fileSelectedBox.style.display = 'none';
+    dropzonePrompt.style.display = 'block';
+  });
+
+  if (streamPreset1 && streamPreset2) {
+    streamPreset1.addEventListener('click', () => {
+      streamPreset1.classList.add('active');
+      streamPreset2.classList.remove('active');
+      currentVideoSource = 'data/videos/sample_broadcast.mp4';
+    });
+
+    streamPreset2.addEventListener('click', () => {
+      streamPreset2.classList.add('active');
+      streamPreset1.classList.remove('active');
+      currentVideoSource = 'data/videos/sample_match_2.mp4';
+    });
+  }
+
+  if (btnApplyStreamUrl && streamUrlInput) {
+    btnApplyStreamUrl.addEventListener('click', () => {
+      const url = streamUrlInput.value.trim();
+      if (url) {
+        currentVideoSource = url;
+        if (streamPreset1) streamPreset1.classList.remove('active');
+        if (streamPreset2) streamPreset2.classList.remove('active');
+        btnApplyStreamUrl.textContent = '✓ Stream Applied';
+        setTimeout(() => { btnApplyStreamUrl.textContent = 'Apply URL'; }, 2000);
+      }
+    });
   }
 
   // Switch View Helper
@@ -995,7 +1126,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   });
-
 
   // Speed Mode Selector
   let selectedDetectorInterval = 3;
@@ -1044,31 +1174,72 @@ document.addEventListener('DOMContentLoaded', () => {
     if (liveMatchSub) liveMatchSub.textContent = msg;
   }
 
+  // Upload Video File Helper with Progress Tracking
+  function uploadVideoFile(file) {
+    return new Promise((resolve, reject) => {
+      const formData = new FormData();
+      formData.append('video', file);
+
+      if (uploadProgressContainer) {
+        uploadProgressContainer.style.display = 'block';
+        uploadProgressFill.style.width = '0%';
+        uploadPctLabel.textContent = '0%';
+        uploadStatusLabel.textContent = `Uploading ${file.name}...`;
+      }
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/upload');
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 100);
+          if (uploadProgressFill) uploadProgressFill.style.width = `${pct}%`;
+          if (uploadPctLabel) uploadPctLabel.textContent = `${pct}%`;
+          if (uploadStatusLabel) {
+            const loadedMb = (e.loaded / (1024 * 1024)).toFixed(1);
+            const totalMb = (e.total / (1024 * 1024)).toFixed(1);
+            uploadStatusLabel.textContent = `Uploading video (${loadedMb} / ${totalMb} MB)...`;
+          }
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const res = JSON.parse(xhr.responseText);
+            if (res.status === 'success' || res.status === 'uploaded') {
+              resolve(res.filepath || res.path);
+            } else {
+              reject(new Error(res.message || 'Upload returned unsuccessful status'));
+            }
+          } catch (err) {
+            reject(new Error('Failed to parse server upload response'));
+          }
+        } else {
+          reject(new Error(`Upload failed with HTTP ${xhr.status}`));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error('Network error during file upload'));
+      xhr.send(formData);
+    });
+  }
+
   // Launch AI Pipeline
   btnProcess.addEventListener('click', async () => {
     btnProcess.disabled = true;
-    switchView('processing');
 
     try {
       let videoPathToProcess = currentVideoSource;
 
-      // Handle file upload if user dropped custom video
-      if (uploadedFile) {
-        updatePipelineStatusText('Uploading Video File...');
-        const formData = new FormData();
-        formData.append('video', uploadedFile);
-
-        const uploadRes = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData,
-        });
-        const uploadData = await uploadRes.json();
-        if (uploadData.status === 'success' || uploadData.status === 'uploaded') {
-          videoPathToProcess = uploadData.filepath || uploadData.saved_path;
-        } else {
-          throw new Error(uploadData.error || 'Upload failed');
-        }
+      // Handle custom file upload in Drag & Drop mode
+      if (activeAnalysisMode === 'upload' && uploadedFile) {
+        updatePipelineStatusText('Uploading Match Video File...');
+        videoPathToProcess = await uploadVideoFile(uploadedFile);
       }
+
+      switchView('processing');
+      updatePipelineStatusText('Initializing GPU Tactical Analytics Pipeline...');
 
       // Collect user options safely with fallback defaults
       const getChecked = (id, defVal = true) => {
@@ -1092,7 +1263,7 @@ document.addEventListener('DOMContentLoaded', () => {
         homography_interval: 25,
       };
 
-      updatePipelineStatusText('Starting AI Tactical Pipeline...');
+      updatePipelineStatusText('Starting GPU Inference & Field Calibration...');
 
       const procRes = await fetch('/api/process', {
         method: 'POST',

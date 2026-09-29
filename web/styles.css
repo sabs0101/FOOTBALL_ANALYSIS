@@ -483,11 +483,59 @@ body {
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), 0 0 20px rgba(0, 229, 153, 0.08);
 }
 
+/* Analysis Mode Tabs & Switcher */
+.analysis-mode-selector {
+  margin-bottom: 24px;
+}
+
+.mode-tabs-wrapper {
+  display: flex;
+  gap: 12px;
+  background: rgba(14, 19, 29, 0.85);
+  border: 1px solid var(--border-subtle);
+  padding: 6px;
+  border-radius: 16px;
+  backdrop-filter: blur(16px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.mode-tab-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px 18px;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-family: var(--font-display);
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.mode-tab-btn:hover {
+  background: rgba(0, 229, 153, 0.08);
+  border-color: rgba(0, 229, 153, 0.4);
+  color: #FFF;
+  transform: translateY(-1px);
+}
+
+.mode-tab-btn.active {
+  background: rgba(0, 229, 153, 0.15);
+  border-color: var(--accent-emerald);
+  color: var(--accent-emerald);
+  box-shadow: 0 0 20px rgba(0, 229, 153, 0.2);
+}
+
 /* Dropzone */
 .dropzone {
   border: 2px dashed rgba(255, 255, 255, 0.15);
   border-radius: 16px;
-  padding: 48px 24px;
+  padding: 36px 20px;
   text-align: center;
   cursor: pointer;
   background: rgba(14, 19, 29, 0.4);
@@ -498,8 +546,8 @@ body {
 
 .dropzone:hover, .dropzone.drag-over {
   border-color: var(--accent-emerald);
-  background: rgba(0, 229, 153, 0.04);
-  box-shadow: var(--shadow-glow);
+  background: rgba(0, 229, 153, 0.06);
+  box-shadow: 0 0 30px rgba(0, 229, 153, 0.18), inset 0 0 20px rgba(0, 229, 153, 0.05);
   transform: translateY(-2px);
 }
 
