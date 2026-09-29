@@ -239,16 +239,16 @@ class AsyncTacticalPipeline:
 
         self.annotator = VideoAnnotator(
             box_thickness=self.config["visualization"].get("box_thickness", 2),
-            font_scale=self.config["visualization"].get("text_scale", 0.55),
-            draw_conf=self.config["visualization"].get("draw_confidences", True),
+            font_scale=self.config["visualization"].get("text_scale", 0.45),
+            draw_conf=self.config["visualization"].get("draw_confidences", False),
             draw_hud=self.config["visualization"].get("draw_hud", True),
             draw_tracks=self.config["visualization"].get("draw_tracks", True),
-            draw_trails=self.config["visualization"].get("draw_trails", True),
+            draw_trails=self.config["visualization"].get("draw_trails", False),
             draw_speed=self.enable_speed,
             draw_team=self.enable_team,
-            draw_pitch_boundary=self.config["visualization"].get("draw_pitch_boundary", False),
-            draw_pitch_lines=self.config["visualization"].get("draw_pitch_lines", False),
-            draw_ball_trail=self.enable_ball_tracking,
+            draw_pitch_boundary=False,
+            draw_pitch_lines=False,
+            draw_ball_trail=self.config["visualization"].get("draw_ball_trail", False),
             draw_possession=self.enable_ball_tracking,
             draw_camera_motion=self.enable_cmc,
         )

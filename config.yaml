@@ -26,7 +26,7 @@ evaluation:
 detection:
   model_name: "yolov8m.pt"    # Options: "yolov8n.pt", "yolov8s.pt", "yolov8m.pt", "yolov8x.pt", "yolo11m.pt"
   model_dir: "models"
-  conf_threshold: 0.18        # High recall threshold enabled by pitch mask crowd-filtering
+  conf_threshold: 0.30        # High precision threshold filtered by pitch mask
   iou_threshold: 0.50         # NMS IoU threshold
   imgsz: 1280                 # High resolution inference for sharp distant player detection
   classes:
@@ -41,7 +41,7 @@ tracking:
   lost_track_buffer: 30       # Frames to keep lost tracks alive (e.g. 1.2s at 25fps)
   minimum_matching_threshold: 0.70
   frame_rate: 25
-  draw_trails: true           # Draw player motion paths / trails
+  draw_trails: false          # Disabled to eliminate spaghetti clutter lines across video
   trail_length: 20            # Number of historical frames for motion trail
 
 # Pitch & Line Detection settings (Milestone 3)
@@ -104,16 +104,17 @@ video:
 visualization:
   draw_boxes: true
   draw_labels: true
-  draw_confidences: true
+  draw_confidences: false     # Clean badges without noisy confidence fractions
   draw_hud: true              # Display FPS, frame counter, active player count HUD
   draw_tracks: true           # Display persistent tracking IDs
-  draw_trails: true           # Display historical foot movement trails
+  draw_trails: false          # Keep main video clean (radar shows spatial paths)
   draw_speed: true            # Display live metric speed (km/h) on player badges
   draw_team: true             # Color-code by Team A vs Team B vs Referee
-  draw_pitch_boundary: false  # Highlight pitch polygon boundary
-  draw_pitch_lines: false     # Highlight detected pitch field lines (disabled to eliminate visual clutter)
+  draw_pitch_boundary: false  # Disabled on video to eliminate border lines
+  draw_pitch_lines: false     # Disabled on video (field markings reserved for 2D radar)
+  draw_ball_trail: false      # Clean ball tracking without streak lines across pitch
   box_thickness: 2
-  text_scale: 0.5
+  text_scale: 0.45
   player_box_color: [0, 215, 255]     # Bright Gold/Amber in BGR
   ball_box_color: [0, 0, 255]         # Red in BGR
   pitch_line_color: [0, 255, 255]     # Cyan/Yellow in BGR

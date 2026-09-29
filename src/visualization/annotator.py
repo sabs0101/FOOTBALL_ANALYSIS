@@ -49,16 +49,17 @@ class VideoAnnotator:
         referee_color: Tuple[int, int, int] = (0, 215, 255),   # Amber/Gold
         pitch_line_color: Tuple[int, int, int] = (0, 255, 255),# Cyan/Yellow
         box_thickness: int = 2,
-        font_scale: float = 0.50,
-        draw_conf: bool = True,
+        font_scale: float = 0.48,
+        draw_conf: bool = False,
         draw_hud: bool = True,
         draw_tracks: bool = True,
-        draw_trails: bool = True,
+        draw_trails: bool = False,
         draw_speed: bool = True,
         draw_team: bool = True,
         draw_pitch_boundary: bool = False,
         draw_pitch_lines: bool = False,
-        draw_ball_trail: bool = True,
+        draw_foot_marker: bool = False,
+        draw_ball_trail: bool = False,
         draw_possession: bool = True,
         draw_camera_motion: bool = True,
         unique_track_colors: bool = False,
@@ -78,6 +79,7 @@ class VideoAnnotator:
         self.draw_team = draw_team
         self.draw_pitch_boundary = draw_pitch_boundary
         self.draw_pitch_lines = draw_pitch_lines
+        self.draw_foot_marker = draw_foot_marker
         self.draw_ball_trail = draw_ball_trail
         self.draw_possession = draw_possession
         self.draw_camera_motion = draw_camera_motion
@@ -351,12 +353,6 @@ class VideoAnnotator:
         cv2.fillPoly(frame, [poly], beacon_color, cv2.LINE_AA)
         cv2.polylines(frame, [poly], isClosed=True, color=(255, 255, 255), thickness=1, lineType=cv2.LINE_AA)
 
-        # Pulse halo around feet
-        foot_x = cx
-        foot_y = int(box[3])
-        cv2.circle(frame, (foot_x, foot_y), 14, beacon_color, 2, cv2.LINE_AA)
-        cv2.circle(frame, (foot_x, foot_y), 18, (255, 255, 255), 1, cv2.LINE_AA)
-
         return frame
 
     def draw_detections(
@@ -368,7 +364,7 @@ class VideoAnnotator:
         ball_state: Optional[Any] = None,
     ) -> np.ndarray:
         """
-        Draw bounding boxes, persistent track IDs, role badges, metric speeds, and class badges.
+        Draw clean bounding boxes, persistent track IDs, role badges, metric speeds, and class badges.
         """
         annotated = frame.copy()
         tracker_ids = getattr(detections, "tracker_ids", None)
@@ -389,7 +385,7 @@ class VideoAnnotator:
             speed_str = ""
             if self.draw_speed and player_metrics and tid in player_metrics:
                 speed_val = player_metrics[tid].current_speed_kmh
-                if speed_val >= 2.0:
+                if speed_val >= 2.5:
                     speed_str = f" {speed_val:.1f}km/h"
 
             role_prefix = ""
@@ -401,17 +397,17 @@ class VideoAnnotator:
                     color = team_result.team_colors[i]
                     team_name = team_result.team_names[i]
                     if team_name == "Team A":
-                        role_prefix = "[A] "
+                        role_prefix = "A "
                     elif team_name == "Team B":
-                        role_prefix = "[B] "
+                        role_prefix = "B "
                     elif team_name == "Team A GK":
-                        role_prefix = "[A-GK] "
+                        role_prefix = "A-GK "
                     elif team_name == "Team B GK":
-                        role_prefix = "[B-GK] "
+                        role_prefix = "B-GK "
                     elif team_name == "Coach":
-                        role_prefix = "[COACH] "
+                        role_prefix = "COACH "
                     else:
-                        role_prefix = "[REF] "
+                        role_prefix = "REF "
                 elif self.unique_track_colors and tid >= 0:
                     color = get_track_color(int(tid))
                 else:
@@ -428,19 +424,13 @@ class VideoAnnotator:
             self._draw_rounded_box(annotated, box, color, self.box_thickness)
             self._draw_badge(annotated, label, (int(box[0]), int(box[1]) - 4), color)
 
-            # Foot contact marker
-            if cid == 0:
+            # Optional Foot contact marker
+            if self.draw_foot_marker and cid == 0:
                 foot_x = int((box[0] + box[2]) / 2.0)
                 foot_y = int(box[3])
                 axis_w = max(4, int((box[2] - box[0]) / 4.0))
                 axis_h = max(2, int(axis_w / 2.5))
                 cv2.ellipse(annotated, (foot_x, foot_y), (axis_w, axis_h), 0, 0, 360, color, 1, cv2.LINE_AA)
-
-        # Draw interpolated ball if raw detection missed but Kalman predicted
-        if ball_state is not None and ball_state.is_interpolated and ball_state.box_xyxy is not None:
-            ibox = ball_state.box_xyxy
-            self._draw_rounded_box(annotated, ibox, (0, 215, 255), thickness=1)
-            self._draw_badge(annotated, "Ball [Tracked]", (int(ibox[0]), int(ibox[1]) - 4), (0, 165, 255))
 
         return annotated
 

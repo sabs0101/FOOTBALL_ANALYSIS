@@ -410,17 +410,17 @@ def run_pipeline(
 
     # 10. Annotator
     annotator = VideoAnnotator(
-        box_thickness=config["visualization"]["box_thickness"],
-        font_scale=config["visualization"]["text_scale"],
-        draw_conf=config["visualization"]["draw_confidences"],
-        draw_hud=draw_hud and config["visualization"]["draw_hud"],
-        draw_tracks=enable_tracking and config["visualization"]["draw_tracks"],
-        draw_trails=draw_trails and config["visualization"]["draw_trails"],
+        box_thickness=config["visualization"].get("box_thickness", 2),
+        font_scale=config["visualization"].get("text_scale", 0.45),
+        draw_conf=config["visualization"].get("draw_confidences", False),
+        draw_hud=draw_hud and config["visualization"].get("draw_hud", True),
+        draw_tracks=enable_tracking and config["visualization"].get("draw_tracks", True),
+        draw_trails=False,
         draw_speed=enable_speed and config["visualization"].get("draw_speed", True),
         draw_team=enable_team and config["visualization"].get("draw_team", True),
-        draw_pitch_boundary=draw_pitch_boundary or config["visualization"].get("draw_pitch_boundary", False),
-        draw_pitch_lines=draw_pitch_lines or config["visualization"].get("draw_pitch_lines", False),
-        draw_ball_trail=enable_ball_tracking,
+        draw_pitch_boundary=False,
+        draw_pitch_lines=False,
+        draw_ball_trail=config["visualization"].get("draw_ball_trail", False),
         draw_possession=enable_ball_tracking,
         draw_camera_motion=enable_cmc,
     )

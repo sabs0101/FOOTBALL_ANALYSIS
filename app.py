@@ -150,7 +150,7 @@ def run_pipeline_task(task_id: str, payload: dict):
 
         pipeline_opts = {
             "model": model_choice,
-            "conf": 0.18,
+            "conf": 0.30,
             "imgsz": imgsz_choice,
             "device": preferred_device,
             "clahe": enable_clahe,
