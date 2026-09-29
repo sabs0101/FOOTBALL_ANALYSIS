@@ -189,25 +189,36 @@ class TeamClassifier:
             "Coach": 0,
         }
 
+        # Align metric positions to each detection index
+        all_pos_m: List[Optional[Tuple[float, float]]] = [None] * num_items
+        if positions_m is not None and len(positions_m) > 0:
+            if len(positions_m) == num_items:
+                for idx in range(num_items):
+                    all_pos_m[idx] = (float(positions_m[idx, 0]), float(positions_m[idx, 1]))
+            else:
+                p_k = 0
+                for idx in range(num_items):
+                    if detections.class_ids[idx] == 0 and p_k < len(positions_m):
+                        all_pos_m[idx] = (float(positions_m[p_k, 0]), float(positions_m[p_k, 1]))
+                        p_k += 1
+
         # Identify deepest players (Goalkeepers) across pitch
         deepest_a_idx = -1
         deepest_b_idx = -1
 
-        if positions_m is not None and len(positions_m) > 0 and len(detections.class_ids) > 0:
-            limit = min(len(positions_m), len(detections.class_ids))
-            valid_p_indices = [
-                i for i in range(limit)
-                if detections.class_ids[i] == 0 and -2.0 <= positions_m[i, 0] <= 107.0 and -2.0 <= positions_m[i, 1] <= 70.0
-            ]
-            if valid_p_indices:
-                p_xs = [positions_m[i, 0] for i in valid_p_indices]
-                min_x_idx = valid_p_indices[int(np.argmin(p_xs))]
-                max_x_idx = valid_p_indices[int(np.argmax(p_xs))]
+        valid_p_indices = [
+            i for i in range(num_items)
+            if detections.class_ids[i] == 0 and all_pos_m[i] is not None and -2.0 <= all_pos_m[i][0] <= 107.0 and -2.0 <= all_pos_m[i][1] <= 70.0
+        ]
+        if valid_p_indices:
+            p_xs = [all_pos_m[i][0] for i in valid_p_indices]
+            min_x_idx = valid_p_indices[int(np.argmin(p_xs))]
+            max_x_idx = valid_p_indices[int(np.argmax(p_xs))]
 
-                if positions_m[min_x_idx, 0] < 32.0:
-                    deepest_a_idx = min_x_idx
-                if positions_m[max_x_idx, 0] > 73.0:
-                    deepest_b_idx = max_x_idx
+            if all_pos_m[min_x_idx][0] < 32.0:
+                deepest_a_idx = min_x_idx
+            if all_pos_m[max_x_idx][0] > 73.0:
+                deepest_b_idx = max_x_idx
 
         for i in range(num_items):
             cid = detections.class_ids[i]
@@ -220,7 +231,7 @@ class TeamClassifier:
                 continue
 
             box = detections.xyxy[i]
-            pos = (float(positions_m[i, 0]), float(positions_m[i, 1])) if (positions_m is not None and i < len(positions_m)) else None
+            pos = all_pos_m[i]
             hsv_profile = self.extract_torso_hsv(frame, box)
 
             raw_role = self.predict_role(

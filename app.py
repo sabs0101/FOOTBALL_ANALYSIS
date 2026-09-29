@@ -101,9 +101,12 @@ def run_pipeline_task(task_id: str, payload: dict):
         elif detector_interval >= 3:
             model_choice = payload.get("model", "models/yolov8m.pt")
             imgsz_choice = 640
-        else:
+        elif detector_interval == 2:
             model_choice = payload.get("model", "models/yolov8m.pt")
             imgsz_choice = int(payload.get("imgsz", 960))
+        else:
+            model_choice = payload.get("model", "models/yolov8m.pt")
+            imgsz_choice = int(payload.get("imgsz", 1280))
 
         last_jpeg_time = 0.0
 
@@ -342,7 +345,7 @@ class DashboardHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
                     try:
                         self.wfile.write(b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpeg_bytes + b"\r\n")
                         self.wfile.flush()
-                    except (BrokenPipeError, ConnectionResetError):
+                    except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
                         break
                 else:
                     consecutive_idle += 1

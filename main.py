@@ -589,7 +589,7 @@ def run_pipeline(
                 team_result = team_classifier.classify_frame(
                     frame=frame,
                     detections=processed_results,
-                    positions_m=player_positions_m if len(player_positions_m) == len(processed_results.xyxy) else None,
+                    positions_m=player_positions_m if len(player_positions_m) > 0 else None,
                 )
                 if team_result is not None:
                     player_indices = np.where(processed_results.class_ids == 0)[0]

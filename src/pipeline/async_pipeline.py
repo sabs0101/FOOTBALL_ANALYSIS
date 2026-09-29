@@ -508,7 +508,7 @@ class AsyncTacticalPipeline:
                     team_result = self.team_classifier.classify_frame(
                         frame=raw_frame,
                         detections=detections,
-                        positions_m=player_positions_m if len(player_positions_m) == len(detections.xyxy) else None,
+                        positions_m=player_positions_m if len(player_positions_m) > 0 else None,
                     )
                     if team_result is not None:
                         player_indices = np.where(detections.class_ids == 0)[0]

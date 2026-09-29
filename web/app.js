@@ -1247,8 +1247,10 @@ document.addEventListener('DOMContentLoaded', () => {
         return el ? el.checked : defVal;
       };
 
+      const isUploadMode = (activeAnalysisMode === 'upload');
       const payload = {
         source: videoPathToProcess,
+        mode: activeAnalysisMode,
         radar: getChecked('cfg-radar', true),
         speed: getChecked('cfg-speed', true),
         tactics: getChecked('cfg-tactics', true),
@@ -1258,9 +1260,10 @@ document.addEventListener('DOMContentLoaded', () => {
         events: getChecked('cfg-events', true),
         clahe: getChecked('cfg-clahe', true),
         ball_track: getChecked('cfg-ball', true),
-        detector_interval: selectedDetectorInterval,
-        sparse_gme: true,
-        homography_interval: 25,
+        detector_interval: isUploadMode ? 1 : selectedDetectorInterval,
+        sparse_gme: isUploadMode ? false : true,
+        homography_interval: isUploadMode ? 1 : 25,
+        imgsz: isUploadMode ? 1280 : (selectedDetectorInterval >= 3 ? 640 : 960),
       };
 
       updatePipelineStatusText('Starting GPU Inference & Field Calibration...');
