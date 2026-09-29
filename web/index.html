@@ -374,9 +374,43 @@
     </main>
 
     <!-- =======================================================================
-         VIEW 2: LIVE AI PROCESSING & REAL-TIME VIDEO STREAM (Milestone 16)
+         VIEW 2: TACTICAL PROCESSING PROGRESS (Drag & Drop Mode - Milestone 12 Quality)
          ======================================================================= -->
     <section id="view-processing" class="view-panel">
+      <div class="glass-card processing-card">
+        <div class="progress-spinner-container">
+          <div class="spinner-ring"></div>
+          <div class="spinner-text" id="progress-pct">0%</div>
+        </div>
+
+        <h3 class="progress-title" id="progress-status-text">Analyzing Broadcast Match Footage</h3>
+        <p class="progress-subtitle" id="progress-status-sub">Executing YOLOv8m detection, ByteTrack tracking, Kalman Ball Estimation & Possession assignment...</p>
+
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill" id="progress-bar"></div>
+        </div>
+
+        <div class="live-metrics-row">
+          <div class="live-metric">
+            <h6>Frame Progress</h6>
+            <span id="metric-frame-count">0 / 0</span>
+          </div>
+          <div class="live-metric">
+            <h6>Inference Speed</h6>
+            <span id="metric-fps">⚡ 0.0 FPS</span>
+          </div>
+          <div class="live-metric">
+            <h6>Active Players</h6>
+            <span id="metric-players">0</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =======================================================================
+         VIEW 2B: REAL-TIME LIVE VIDEO STREAM (Live Streaming Mode Only)
+         ======================================================================= -->
+    <section id="view-stream" class="view-panel">
       <div class="live-stream-container">
         
         <!-- TOP STREAM HEADER & CONTROLS -->
@@ -391,12 +425,12 @@
           </div>
           <div class="stream-progress-group">
             <div class="progress-bar-track-stream">
-              <div class="progress-bar-fill" id="progress-bar"></div>
+              <div class="progress-bar-fill" id="progress-bar-stream"></div>
             </div>
             <div class="stream-stats-strip">
-              <span id="metric-frame-count">0 / 0</span>
-              <span id="metric-fps" class="stat-highlight">⚡ 0.0 FPS</span>
-              <span id="progress-pct" class="stat-pct">0% Complete</span>
+              <span id="stream-frame-count">0 / 0</span>
+              <span id="stream-fps" class="stat-highlight">⚡ 0.0 FPS</span>
+              <span id="stream-pct" class="stat-pct">0% Complete</span>
             </div>
           </div>
         </div>
@@ -431,7 +465,7 @@
               </div>
               <div class="hud-pill">
                 <span class="hud-label">ACTIVE PLAYERS</span>
-                <span class="hud-value" id="metric-players">0</span>
+                <span class="hud-value" id="stream-metric-players">0</span>
               </div>
             </div>
           </div>
